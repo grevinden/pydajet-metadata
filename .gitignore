@@ -1,4 +1,5 @@
-/build/
-/dist/
-/src/dajet_metadata/
-*.egg-info/
+**
+!.git*
+!pyproject.toml
+!*.py
+!*.lock
