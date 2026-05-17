@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Any
 
 from pydantic import validate_call
-from sqlalchemy import select, func, insert, update, delete
+from sqlalchemy import select, func, insert, update, delete, text
 from sqlalchemy.types import String, Boolean, Integer, Float, LargeBinary, DateTime
 from typing_extensions import Literal
 
