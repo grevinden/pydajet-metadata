@@ -4,14 +4,20 @@ version = "0.0.0"
 description = "..."
 requires-python = ">=3.13"
 dependencies = [
+    "build>=1.5.0",
     "httpx>=1.0.dev3",
-
+    "icecream>=2.2.0",
+    "psycopg2-binary>=2.9.12",
+    "pydantic>=2.13.4",
+    "pythonnet>=3.0.5",
+    "pyyaml>=6.0.3",
+    "sqlalchemy>=2.0.49",
 ]
 
 [build-system]
 requires = [
-    "setuptools>=82.0.1",
-    "tomli>=2.4.1",
+    "setuptools>=82.0.1","sitecustomize",
+    "tomli>=2.4.1","icecream"
 ]
 build-backend = "setuptools.build_meta"
 package=true
@@ -23,7 +29,7 @@ where = ["src"]
 pydajet_metadata = ["bin/**/*"]
 
 [tool.dajet]
-version = "5.0.0-alpha"
+version = "v5.0.0-alpha"
 
-[tool.uv]
-verbose = true
+[tool.uv.sources]
+sitecustomize = { git = "https://gitflic.ru/project/rav/sitecustomize.git" }
