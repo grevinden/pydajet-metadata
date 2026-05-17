@@ -27,12 +27,20 @@ package=true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = [
+    "dajet",
+    "dajet.*",
+    "pydajet_metadata",
+    "pydajet_metadata.*"]
 
 [tool.setuptools.package-data]
-pydajet_metadata = ["bin/**/*"]
+dajet = []
+pydajet_metadata = [
+    "bin/**/*"
+]
 
 [tool.dajet]
 version = "v5.0.0-alpha"
 
-[tool.uv.sources]
-sitecustomize = { git = "https://gitflic.ru/project/rav/sitecustomize.git" }
+[tool.uv.sources.sitecustomize]
+git = "https://gitflic.ru/project/rav/sitecustomize.git"

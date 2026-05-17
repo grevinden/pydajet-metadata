@@ -1,9 +1,7 @@
-"""
-_types.py — Маппинг типов PostgreSQL → SQLAlchemy → Python.
-"""
+"""Маппинг типов PostgreSQL → SQLAlchemy → Python."""
 from datetime import datetime
+from sqlalchemy.types import Integer, String, Boolean, DateTime, LargeBinary, Float
 
-from sqlalchemy.types import Integer , String , Boolean , DateTime , LargeBinary , Float
 
 PG_TO_SA = {
     'bytea': LargeBinary,
@@ -32,7 +30,6 @@ SA_TO_PYTHON = {
 
 
 def pg_to_sqlalchemy(pg_type: str) -> type:
-    """PostgreSQL → SQLAlchemy."""
     pg_type = pg_type.lower()
     for key, sa_type in PG_TO_SA.items():
         if key in pg_type:
@@ -41,7 +38,6 @@ def pg_to_sqlalchemy(pg_type: str) -> type:
 
 
 def sa_to_python(sa_type) -> type:
-    """SQLAlchemy → Python."""
     type_str = str(sa_type).lower()
     for key, py_type in SA_TO_PYTHON.items():
         if key in type_str:

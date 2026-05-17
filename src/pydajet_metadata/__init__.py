@@ -1,23 +1,24 @@
-from os import environ
+"""
+pydajet_metadata — Прикладной слой для работы с данными 1С.
+"""
+from pydajet_metadata._types import pg_to_sqlalchemy, sa_to_python
+from pydajet_metadata.session import Session
+from pydajet_metadata.query import Query
+from pydajet_metadata.repository import Repository
+from pydajet_metadata.schema import SchemaGenerator
+from pydajet_metadata.bridge import PolarsBridge
+from pydajet_metadata.api import APIGenerator
 
-from pydajet_metadata._platform import find_binary_folder
+# Реэкспорт из dajet для удобства
+from dajet import MetadataClient, from_1c, to_1c, generate as uuid_generate, format_uuid
 
-environ.setdefault ( "PYTHONNET_RUNTIME" , "coreclr" )
-
-import clr  # noqa
-
-for dll in "TypeSystem" , "Data" , "Metadata" :
-	clr.AddReference ( str ( find_binary_folder ( ) / f"DaJet.{dll}.dll" ) )  # noqa
-
-from DaJet.Metadata import MetadataProvider  # noqa
-from DaJet.Data import DataSourceType  # noqa
-from System import Guid  # noqa
-from System.Collections.Generic import List  # noqa
-
-__all__ = [ 'DataSourceType' , 'MetadataProvider' , 'Guid' , 'List' ]  # noqa
-
-from sqlalchemy.dialects.postgresql import VARCHAR
-from sqlalchemy.dialects.postgresql.base import ischema_names
-
-# Регистрируем mvarchar как VARCHAR ДО вызова get_columns
-ischema_names['mvarchar'] = VARCHAR
+__all__ = [
+    'MetadataClient',
+    'Session',
+    'Query',
+    'Repository',
+    'SchemaGenerator',
+    'PolarsBridge',
+    'APIGenerator',
+    'from_1c', 'to_1c', 'uuid_generate', 'format_uuid',
+]
