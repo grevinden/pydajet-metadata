@@ -1,13 +1,14 @@
 """Построитель запросов к таблицам 1С."""
+
 from datetime import datetime
-from typing import Optional , Any
+from typing import Optional, Any
 
 from pydantic import validate_call
-from sqlalchemy import select , func , insert , update , delete
-from sqlalchemy.types import String , Boolean , Integer , Float , LargeBinary , DateTime
+from sqlalchemy import select, func, insert, update, delete
+from sqlalchemy.types import String, Boolean, Integer, Float, LargeBinary, DateTime
 from typing_extensions import Literal
 
-from pydajet_metadata._uuid import generate , to_1c , from_1c , format_uuid
+from pydajet_metadata._uuid import generate, to_1c, from_1c, format_uuid
 from pydajet_metadata.session import Session
 
 
@@ -17,8 +18,8 @@ class Query:
         session: Session,
         table_name: str,
         column_map: dict[str, str],
-        pk: str = '_idrref',
-        owner_key: str = '_idrref',
+        pk: str = "_idrref",
+        owner_key: str = "_idrref",
     ):
         self._session = session
         self._table = session.reflect_table(table_name)
@@ -27,7 +28,7 @@ class Query:
         self._pk = pk.lower()
         self._owner_key = owner_key.lower()
         self._where = []
-        self._children: dict[str, 'Query'] = {}
+        self._children: dict[str, "Query"] = {}
 
     def __getattr__(self, name: str):
         if name in self._column_map:
@@ -73,7 +74,7 @@ class Query:
 
         if extra:
             for k, v in extra.items():
-                if isinstance(v, str) and len(v.replace('-', '')) == 32:
+                if isinstance(v, str) and len(v.replace("-", "")) == 32:
                     extra[k] = to_1c(v)
             db.update(extra)
 
@@ -87,7 +88,11 @@ class Query:
 
     def update(self, record_id: str, data: dict[str, Any]) -> bool:
         db = self._human_to_db(data)
-        stmt = update(self._table).where(self._table.c[self._pk] == to_1c(record_id)).values(**db)
+        stmt = (
+            update(self._table)
+            .where(self._table.c[self._pk] == to_1c(record_id))
+            .values(**db)
+        )
         with self._session.engine.begin() as conn:
             return conn.execute(stmt).rowcount > 0
 
@@ -135,43 +140,45 @@ class Query:
 
     def _default(self, col) -> Any:
         name = col.name.lower()
-        if name == '_version':
+        if name == "_version":
             return 0
-        if name == '_marked':
+        if name == "_marked":
             return False
-        if name == '_posted':
+        if name == "_posted":
             return True
-        if name == '_date_time':
+        if name == "_date_time":
             return datetime.now()
-        if name == '_number':
-            return ''
-        if name == '_keyfield':
+        if name == "_number":
+            return ""
+        if name == "_keyfield":
             return to_1c(generate())
-        if name.endswith('_rref'):
-            return b'\x00' * 16
-        if name.endswith('_rtref'):
-            return b'\x00' * 4
-        if name.endswith('_type'):
-            return b'\x00' * 1
+        if name.endswith("_rref"):
+            return b"\x00" * 16
+        if name.endswith("_rtref"):
+            return b"\x00" * 4
+        if name.endswith("_type"):
+            return b"\x00" * 1
         if isinstance(col.type, String):
-            return ''
+            return ""
         if isinstance(col.type, Boolean):
             return False
         if isinstance(col.type, (Integer, Float)):
             return 0
         if isinstance(col.type, LargeBinary):
-            return b'\x00' * 16
+            return b"\x00" * 16
         if isinstance(col.type, DateTime):
             return datetime.now()
         return None
 
     def _is_binary(self, col_name: str) -> bool:
-        return col_name in self._table.c and isinstance(self._table.c[col_name].type, LargeBinary)
+        return col_name in self._table.c and isinstance(
+            self._table.c[col_name].type, LargeBinary
+        )
 
     @validate_call
     def lock(
         self,
-        mode: Literal["exclusive","shared"] = "exclusive",
+        mode: Literal["exclusive", "shared"] = "exclusive",
         row_id: str = None,
         nowait: bool = False,
     ) -> None:
@@ -179,27 +186,30 @@ class Query:
         Накладывает блокировку на таблицу или конкретную запись.
 
         Args:
-            mode: 'share' (разделяемая, другие могут читать, но не писать)
+            mode: 'shared' (разделяемая, другие могут читать, но не писать)
                   или 'exclusive' (эксклюзивная, никто не может читать/писать)
             row_id: UUID записи для блокировки строки (если None — блокируется вся таблица)
             nowait: если True, выбрасывает ошибку при невозможности захватить блокировку
         """
         if row_id is not None:
             # Блокировка строки через SELECT ... FOR UPDATE
-            pk_col = self._table.c[self._primary_key]
+            pk_col = self._table.c[
+                self._pk
+            ]  # используем self._pk вместо self._primary_key
             stmt = select(self._table).where(pk_col == to_1c(row_id))
-            if mode == "share":
+            if mode == "shared":
                 stmt = stmt.with_for_update(read=True, nowait=nowait)
             else:
                 stmt = stmt.with_for_update(nowait=nowait)
-            # Выполняем запрос, чтобы установить блокировку
             with self._session.engine.connect() as conn:
                 conn.execute(stmt)
         else:
             # Блокировка всей таблицы через LOCK TABLE
-            lock_mode = "SHARE" if mode == "share" else "EXCLUSIVE"
+            lock_mode = "SHARE" if mode == "shared" else "EXCLUSIVE"
             sql = f"LOCK TABLE {self._table.name} IN {lock_mode} MODE"
             if nowait:
                 sql += " NOWAIT"
             with self._session.engine.begin() as conn:
+                from sqlalchemy import text
+
                 conn.execute(text(sql))
