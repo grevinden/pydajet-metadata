@@ -1,6 +1,11 @@
 """Тесты MetadataClient."""
+
 import pytest
-from unittest.mock import MagicMock , patch , PropertyMock
+
+# Пропускаем весь модуль, если нет .NET
+pytest.importorskip ( "pydajet.client" , reason = "Требуется .NET Runtime" )
+
+from unittest.mock import MagicMock , patch
 from pydajet.client import MetadataClient
 
 

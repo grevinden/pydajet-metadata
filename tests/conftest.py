@@ -1,10 +1,7 @@
 """Общие фикстуры для всех тестов."""
 import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime
 from uuid import UUID
-
-from pydajet._uuid import from_1c, to_1c, generate, format_uuid
 
 
 @pytest.fixture
@@ -14,25 +11,21 @@ def sample_connection_string():
 
 @pytest.fixture
 def sample_uuid_bytes():
-    """UUID справочника в формате 1С (перевёрнутый)."""
     return b'\x9c\x28\x00\x50\xb6\x66\xdf\xfa\x11\xf1\x4e\x88\x0e\x76\x1a\xbe'
 
 
 @pytest.fixture
 def sample_uuid():
-    """Стандартный UUID."""
     return UUID('9c280050-b666-dffa-11f1-4e880e761abe')
 
 
 @pytest.fixture
 def sample_uuid_hex():
-    """UUID без дефисов."""
     return '9c280050b666dffa11f14e880e761abe'
 
 
 @pytest.fixture
 def sample_uuid_formatted():
-    """UUID с дефисами."""
     return '9c280050-b666-dffa-11f1-4e880e761abe'
 
 

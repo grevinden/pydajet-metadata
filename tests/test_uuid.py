@@ -1,11 +1,13 @@
 """Тесты UUID-конвертации."""
 import pytest
 from uuid import UUID
-from pydajet._uuid import from_1c , to_1c , generate , format_uuid
-from hypothesis import given , strategies as st
+from hypothesis import given, strategies as st
+
+# Импортируем напрямую, минуя pydajet/__init__.py (который тянет .NET)
+from pydajet._uuid import from_1c, to_1c, generate, format_uuid
 
 
-class TestUUIDConversion :
+class TestUUIDConversion:
 	"""Конвертация 1С ↔ стандартный UUID."""
 
 	def test_from_1c_to_standard ( self , sample_uuid_bytes , sample_uuid ) :
