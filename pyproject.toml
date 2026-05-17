@@ -81,6 +81,10 @@ omit = [
     "**/pycharm/*",
     "**/_jb_*",
 ]
+disable_warnings = [
+    "module-not-imported",
+    "no-data-collected",
+]
 
 [tool.coverage.report]
 exclude_lines = [

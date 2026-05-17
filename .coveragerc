@@ -1,6 +1,7 @@
 [run]
 source = src/pydajet, src/pydajet_metadata
 omit = tests/*, **/teamcity/*, **/pycharm/*, **/_jb_*
+disable_warnings = module-not-imported, no-data-collected
 
 [report]
 exclude_also =
