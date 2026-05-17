@@ -3,3 +3,4 @@
 !pyproject.toml
 !*.py
 !*.lock
+!*.md
