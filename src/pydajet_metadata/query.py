@@ -2,8 +2,10 @@
 from datetime import datetime
 from typing import Optional , Any
 
+from pydantic import validate_call
 from sqlalchemy import select , func , insert , update , delete
 from sqlalchemy.types import String , Boolean , Integer , Float , LargeBinary , DateTime
+from typing_extensions import Literal
 
 from pydajet_metadata._uuid import generate , to_1c , from_1c , format_uuid
 from pydajet_metadata.session import Session
@@ -165,3 +167,39 @@ class Query:
 
     def _is_binary(self, col_name: str) -> bool:
         return col_name in self._table.c and isinstance(self._table.c[col_name].type, LargeBinary)
+
+    @validate_call
+    def lock(
+        self,
+        mode: Literal["exclusive","shared"] = "exclusive",
+        row_id: str = None,
+        nowait: bool = False,
+    ) -> None:
+        """
+        Накладывает блокировку на таблицу или конкретную запись.
+
+        Args:
+            mode: 'share' (разделяемая, другие могут читать, но не писать)
+                  или 'exclusive' (эксклюзивная, никто не может читать/писать)
+            row_id: UUID записи для блокировки строки (если None — блокируется вся таблица)
+            nowait: если True, выбрасывает ошибку при невозможности захватить блокировку
+        """
+        if row_id is not None:
+            # Блокировка строки через SELECT ... FOR UPDATE
+            pk_col = self._table.c[self._primary_key]
+            stmt = select(self._table).where(pk_col == to_1c(row_id))
+            if mode == "share":
+                stmt = stmt.with_for_update(read=True, nowait=nowait)
+            else:
+                stmt = stmt.with_for_update(nowait=nowait)
+            # Выполняем запрос, чтобы установить блокировку
+            with self._session.engine.connect() as conn:
+                conn.execute(stmt)
+        else:
+            # Блокировка всей таблицы через LOCK TABLE
+            lock_mode = "SHARE" if mode == "share" else "EXCLUSIVE"
+            sql = f"LOCK TABLE {self._table.name} IN {lock_mode} MODE"
+            if nowait:
+                sql += " NOWAIT"
+            with self._session.engine.begin() as conn:
+                conn.execute(text(sql))
