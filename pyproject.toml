@@ -6,7 +6,6 @@ requires-python = ">=3.13"
 dependencies = [
     "build>=1.5.0",
     "fastapi>=0.136.1",
-    "httpx>=1.0.dev3",
     "icecream>=2.2.0",
     "polars>=1.40.1",
     "psycopg2-binary>=2.9.12",
@@ -19,14 +18,22 @@ dependencies = [
 
 [build-system]
 requires = [
-    "setuptools>=82.0.1","sitecustomize",
-    "tomli>=2.4.1","icecream"
+    "setuptools>=82.0.1",
+    "sitecustomize",
+    "tomli>=2.4.1",
+    "icecream",
 ]
 build-backend = "setuptools.build_meta"
-package=true
+package = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = [
+    "pydajet",
+    "pydajet.*",
+    "pydajet_metadata",
+    "pydajet_metadata.*",
+]
 
 [tool.setuptools.package-data]
 pydajet_metadata = ["bin/**/*"]
@@ -36,3 +43,55 @@ version = "v5.0.0-alpha"
 
 [tool.uv.sources]
 sitecustomize = { git = "https://gitflic.ru/project/rav/sitecustomize.git" }
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "hypothesis>=6.152.7",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "pytest-xdist>=3.8.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v","-s","-x",
+    "--tb=long",
+    "--strict-markers",
+    "--cov=src/pydajet",
+    "--cov=src/pydajet_metadata",
+    "--cov-config=.coveragerc",
+    "--cov-report=html",
+    "--cov-report=term",
+    "--durations=10",
+    "--showlocals",
+]
+
+[tool.coverage.run]
+source = ["src/pydajet", "src/pydajet_metadata"]
+omit = [
+    "tests/*",
+    "**/teamcity/*",
+    "**/pycharm/*",
+    "**/_jb_*",
+]
+disable_warnings = [
+    "module-not-imported",
+    "no-data-collected",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
