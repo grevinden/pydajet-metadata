@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import select, func, insert, update, delete
 from sqlalchemy.types import String, Boolean, Integer, Float, LargeBinary, DateTime
 
-from dajet._uuid import generate, to_1c, from_1c, format_uuid
+from pydajet._uuid import generate, to_1c, from_1c, format_uuid
 from pydajet_metadata.session import Session
 
 

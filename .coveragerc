@@ -1,0 +1,10 @@
+[run]
+source = src/pydajet, src/pydajet_metadata
+omit = tests/*, **/teamcity/*, **/pycharm/*, **/_jb_*
+
+[report]
+exclude_also =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:

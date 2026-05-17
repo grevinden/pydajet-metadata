@@ -1,5 +1,6 @@
 .*
 !.git*
+!.coveragerc
 dist
 **/*.egg-info
 build

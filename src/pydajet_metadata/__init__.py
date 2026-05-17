@@ -10,7 +10,7 @@ from pydajet_metadata.bridge import PolarsBridge
 from pydajet_metadata.api import APIGenerator
 
 # Реэкспорт из dajet для удобства
-from dajet import MetadataClient, from_1c, to_1c, generate as uuid_generate, format_uuid
+from pydajet import MetadataClient, from_1c, to_1c, generate as uuid_generate, format_uuid
 
 __all__ = [
     'MetadataClient',

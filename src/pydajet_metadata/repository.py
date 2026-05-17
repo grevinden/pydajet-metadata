@@ -1,5 +1,5 @@
 """Репозиторий объектов 1С."""
-from dajet import MetadataClient
+from pydajet import MetadataClient
 from pydajet_metadata.session import Session
 from pydajet_metadata.query import Query
 

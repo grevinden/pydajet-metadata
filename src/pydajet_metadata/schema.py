@@ -2,7 +2,7 @@
 from typing import Optional, Any
 from pydantic import BaseModel, Field, create_model
 
-from dajet._uuid import to_1c
+from pydajet._uuid import to_1c
 from pydajet_metadata._types import sa_to_python
 from pydajet_metadata.repository import Repository
 
