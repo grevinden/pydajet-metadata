@@ -32,7 +32,7 @@ from sqlalchemy.dialects.postgresql.base import ischema_names
 ischema_names['mvarchar'] = VARCHAR
 
 from pydajet.client import MetadataClient
-from pydajet._uuid import from_1c, to_1c, generate, format_uuid
+from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
 
 __all__ = [
     'MetadataProvider' , 'DataSourceType' , 'Guid' , 'List' ,  # noqa

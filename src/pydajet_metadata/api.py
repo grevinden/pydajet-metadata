@@ -1,8 +1,9 @@
 """FastAPI-генератор."""
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, create_model
+
 import uvicorn
+from fastapi import FastAPI , HTTPException
+from pydantic import Field , create_model
 
 from pydajet_metadata._types import sa_to_python
 from pydajet_metadata.repository import Repository

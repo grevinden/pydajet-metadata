@@ -1,10 +1,11 @@
 """Построитель запросов к таблицам 1С."""
-from typing import Optional, Any
 from datetime import datetime
-from sqlalchemy import select, func, insert, update, delete
-from sqlalchemy.types import String, Boolean, Integer, Float, LargeBinary, DateTime
+from typing import Optional , Any
 
-from pydajet._uuid import generate, to_1c, from_1c, format_uuid
+from sqlalchemy import select , func , insert , update , delete
+from sqlalchemy.types import String , Boolean , Integer , Float , LargeBinary , DateTime
+
+from pydajet_metadata._uuid import generate , to_1c , from_1c , format_uuid
 from pydajet_metadata.session import Session
 
 

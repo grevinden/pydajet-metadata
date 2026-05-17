@@ -1,6 +1,7 @@
 """Низкоуровневый клиент для чтения метаданных 1С через DaJet Metadata."""
 from typing import Optional
-from pydajet import MetadataProvider, DataSourceType, Guid, List
+
+from pydajet import MetadataProvider , DataSourceType , Guid , List
 
 
 class MetadataClient:

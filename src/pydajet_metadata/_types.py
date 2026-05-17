@@ -1,7 +1,7 @@
 """Маппинг типов PostgreSQL → SQLAlchemy → Python."""
 from datetime import datetime
-from sqlalchemy.types import Integer, String, Boolean, DateTime, LargeBinary, Float
 
+from sqlalchemy.types import Integer , String , Boolean , DateTime , LargeBinary , Float
 
 PG_TO_SA = {
     'bytea': LargeBinary,

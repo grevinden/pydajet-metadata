@@ -1,9 +1,10 @@
 """Генератор Pydantic-моделей."""
-from typing import Optional, Any
-from pydantic import BaseModel, Field, create_model
+from typing import Optional
 
-from pydajet._uuid import to_1c
+from pydantic import BaseModel , Field , create_model
+
 from pydajet_metadata._types import sa_to_python
+from pydajet_metadata._uuid import to_1c
 from pydajet_metadata.repository import Repository
 
 

@@ -1,11 +1,9 @@
 """Тесты Query builder."""
 import pytest
-from unittest.mock import MagicMock , patch , call
-from datetime import datetime
+from unittest.mock import MagicMock , patch
 from sqlalchemy import Table , Column , MetaData
 from sqlalchemy.types import Integer , String , Boolean , DateTime , LargeBinary
 
-from pydajet._uuid import to_1c , from_1c
 from pydajet_metadata.query import Query
 
 

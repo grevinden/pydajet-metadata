@@ -1,15 +1,17 @@
 """Репозиторий объектов 1С."""
-from pydajet import MetadataClient
 from pydajet_metadata.session import Session
 from pydajet_metadata.query import Query
 
 
-class Repository:
-    def __init__(self, connection_string: str, data_source: str = "postgresql"):
-        self._client = MetadataClient(connection_string, data_source)
-        self._session = Session(connection_string)
-        self._queries: dict[str, dict[str, Query]] = {}
-        self._build()
+class Repository :
+    def __init__ ( self , connection_string: str , data_source: str = "postgresql" ) :
+        # Ленивый импорт — только когда создаётся экземпляр
+        from pydajet.client import MetadataClient
+
+        self._client = MetadataClient ( connection_string , data_source )
+        self._session = Session ( connection_string )
+        self._queries: dict [ str , dict [ str , Query ] ] = { }
+        self._build ( )
 
     def _build(self):
         for type_name in self._client.list_types():

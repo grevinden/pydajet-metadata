@@ -4,7 +4,7 @@ from uuid import UUID
 from hypothesis import given, strategies as st
 
 # Импортируем напрямую, минуя pydajet/__init__.py (который тянет .NET)
-from pydajet._uuid import from_1c, to_1c, generate, format_uuid
+from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
 
 
 class TestUUIDConversion:

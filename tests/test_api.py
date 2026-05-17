@@ -17,19 +17,30 @@ class TestAPIGenerator:
         return repo
 
     @pytest.fixture
-    def mock_query(self):
-        q = MagicMock()
-        q.all.return_value = [
-            {'Ссылка': '9c280050-b666-dffa-11f1-4e880e761abe', 'Наименование': 'Тест', 'Код': '001'},
-        ]
-        q.first.return_value = {'Ссылка': '9c280050-b666-dffa-11f1-4e880e761abe', 'Наименование': 'Тест', 'Код': '001'}
-        q.insert.return_value = '9c280050-b666-dffa-11f1-4e880e761abe'
+    def mock_query ( self ) :
+        q = MagicMock ( )
+        q.all.return_value = [ ... ]
+        q.first.return_value = { ... }
+        q.insert.return_value = '...'
         q.update.return_value = True
         q.delete.return_value = True
         q._pk = '_idrref'
-        q._table = MagicMock()
-        q._table.c = {'_idrref': MagicMock()}
-        q._column_map = {'Ссылка': '_IDRRef', 'Наименование': '_Description', 'Код': '_Code'}
+        q._table = MagicMock ( )
+        # Добавить все колонки, которые используются в _generate_models
+        q._table.c = {
+            '_idrref'      : MagicMock ( ) ,
+            '_description' : MagicMock ( ) ,  # ← добавить
+            '_code'        : MagicMock ( ) ,  # ← добавить
+        }
+        q._table.c [ '_description' ].__str__ = lambda : 'VARCHAR(150)'
+        q._table.c [ '_code' ].__str__ = lambda : 'VARCHAR(50)'
+        q._table.c [ '_description' ].nullable = True
+        q._table.c [ '_code' ].nullable = True
+        q._column_map = {
+            'Ссылка'       : '_IDRRef' ,
+            'Наименование' : '_Description' ,
+            'Код'          : '_Code' ,
+        }
         return q
 
     @pytest.fixture
