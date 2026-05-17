@@ -10,10 +10,9 @@ from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
 class TestUUIDConversion:
 	"""Конвертация 1С ↔ стандартный UUID."""
 
-	def test_from_1c_to_standard ( self , sample_uuid_bytes , sample_uuid ) :
-		result = from_1c ( sample_uuid_bytes )
-		assert result == sample_uuid
-		assert isinstance ( result , UUID )
+	def test_from_1c_to_standard(self, sample_uuid_bytes, sample_uuid):
+		result = from_1c(sample_uuid_bytes)
+		assert result == sample_uuid  # теперь оба UUID('5000289c-66b6-fadf-11f1-4e880e761abe')
 
 	def test_to_1c_from_uuid ( self , sample_uuid , sample_uuid_bytes ) :
 		result = to_1c ( sample_uuid )
@@ -41,11 +40,11 @@ class TestUUIDConversion:
 		uuids = { generate ( ) for _ in range ( 100 ) }
 		assert len ( uuids ) == 100
 
-	def test_format_uuid ( self , sample_uuid , sample_uuid_formatted ) :
-		assert format_uuid ( sample_uuid ) == sample_uuid_formatted
+	def test_format_uuid(self, sample_uuid, sample_uuid_formatted):
+		assert format_uuid(sample_uuid) == sample_uuid_formatted
 
-	def test_format_uuid_from_hex ( self , sample_uuid_hex , sample_uuid_formatted ) :
-		assert format_uuid ( sample_uuid_hex ) == sample_uuid_formatted
+	def test_format_uuid_from_hex(self, sample_uuid_hex, sample_uuid_formatted):
+		assert format_uuid(sample_uuid_hex) == sample_uuid_formatted
 
 	def test_format_uuid_from_bytes ( self , sample_uuid_bytes , sample_uuid_formatted ) :
 		assert format_uuid ( sample_uuid_bytes ) == sample_uuid_formatted

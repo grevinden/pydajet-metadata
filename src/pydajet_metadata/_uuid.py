@@ -1,8 +1,9 @@
-"""UUID конвертация 1С ↔ стандартный."""
+"""Конвертация UUID между форматами 1С и стандартным."""
 from uuid import UUID, uuid4
 
 
 def from_1c(uuid_bytes: bytes) -> UUID:
+    """1С → стандартный UUID."""
     if len(uuid_bytes) != 16:
         raise ValueError(f"Expected 16 bytes, got {len(uuid_bytes)}")
     d = list(uuid_bytes)
@@ -10,6 +11,7 @@ def from_1c(uuid_bytes: bytes) -> UUID:
 
 
 def to_1c(uuid: UUID | str | bytes) -> bytes:
+    """Стандартный UUID → формат 1С."""
     if isinstance(uuid, str):
         uuid = UUID(uuid.replace('-', ''))
     elif isinstance(uuid, bytes):
@@ -19,6 +21,7 @@ def to_1c(uuid: UUID | str | bytes) -> bytes:
 
 
 def generate() -> UUID:
+    """Новый UUID."""
     return uuid4()
 
 
@@ -26,5 +29,6 @@ def format_uuid(uuid: UUID | str | bytes) -> str:
     if isinstance(uuid, str):
         return str(UUID(uuid.replace('-', '')))
     elif isinstance(uuid, bytes):
-        return str(UUID(bytes=uuid))
+        # Конвертируем 1С-байты в стандартный UUID, затем в строку
+        return str(from_1c(uuid))
     return str(uuid)

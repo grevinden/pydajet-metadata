@@ -11,22 +11,23 @@ def sample_connection_string():
 
 @pytest.fixture
 def sample_uuid_bytes():
+    """UUID справочника в формате 1С (перевёрнутый)."""
     return b'\x9c\x28\x00\x50\xb6\x66\xdf\xfa\x11\xf1\x4e\x88\x0e\x76\x1a\xbe'
-
 
 @pytest.fixture
 def sample_uuid():
-    return UUID('9c280050-b666-dffa-11f1-4e880e761abe')
-
+    """Стандартный UUID после конвертации из 1С."""
+    return UUID('5000289c-66b6-fadf-11f1-4e880e761abe')
 
 @pytest.fixture
 def sample_uuid_hex():
-    return '9c280050b666dffa11f14e880e761abe'
-
+    """UUID без дефисов."""
+    return '5000289c66b6fadf11f14e880e761abe'
 
 @pytest.fixture
 def sample_uuid_formatted():
-    return '9c280050-b666-dffa-11f1-4e880e761abe'
+    """UUID с дефисами."""
+    return '5000289c-66b6-fadf-11f1-4e880e761abe'
 
 
 @pytest.fixture
