@@ -1,6 +1,8 @@
-**
+.*
 !.git*
-!pyproject.toml
-!*.py
-!*.lock
-!*.md
+dist
+**/*.egg-info
+build
+**/__pycache__
+**/*.pyc
+**/bin
