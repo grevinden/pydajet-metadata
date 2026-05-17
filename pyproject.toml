@@ -61,14 +61,15 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
-    "-v",
-    "--tb=short",
+    "-v","-s","-x",
+    "--tb=long",
     "--strict-markers",
-    "-x",
     "--cov=src/pydajet",
     "--cov=src/pydajet_metadata",
     "--cov-report=html",
     "--cov-report=term",
+    "--durations=10",
+    "--showlocals",
 ]
 
 [tool.coverage.run]
