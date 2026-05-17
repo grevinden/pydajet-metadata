@@ -186,16 +186,16 @@ class Query:
         Накладывает блокировку на таблицу или конкретную запись.
 
         Args:
-            mode: 'shared' (разделяемая, другие могут читать, но не писать)
-                  или 'exclusive' (эксклюзивная, никто не может читать/писать)
-            row_id: UUID записи для блокировки строки (если None — блокируется вся таблица)
-            nowait: если True, выбрасывает ошибку при невозможности захватить блокировку
+            mode: 'shared' (разделяемая) или 'exclusive' (эксклюзивная)
+            row_id: UUID записи для блокировки строки (None — вся таблица)
+            nowait: True — ошибка при занятой блокировке, False — ожидание
+
+        Raises:
+            OperationalError: если nowait=True и блокировка занята
         """
         if row_id is not None:
             # Блокировка строки через SELECT ... FOR UPDATE
-            pk_col = self._table.c[
-                self._pk
-            ]  # используем self._pk вместо self._primary_key
+            pk_col = self._table.c[self._pk]
             stmt = select(self._table).where(pk_col == to_1c(row_id))
             if mode == "shared":
                 stmt = stmt.with_for_update(read=True, nowait=nowait)
@@ -205,11 +205,12 @@ class Query:
                 conn.execute(stmt)
         else:
             # Блокировка всей таблицы через LOCK TABLE
-            lock_mode = "SHARE" if mode == "shared" else "EXCLUSIVE"
-            sql = f"LOCK TABLE {self._table.name} IN {lock_mode} MODE"
+            # Безопасное экранирование идентификатора таблицы
+            dialect = self._session.engine.dialect
+            safe_table = dialect.identifier_preparer.quote_identifier(self._table.name)
+            lock_mode_sql = "SHARE" if mode == "shared" else "EXCLUSIVE"
+            sql = f"LOCK TABLE {safe_table} IN {lock_mode_sql} MODE"
             if nowait:
                 sql += " NOWAIT"
             with self._session.engine.begin() as conn:
-                from sqlalchemy import text
-
                 conn.execute(text(sql))

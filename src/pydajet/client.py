@@ -1,7 +1,11 @@
 """Низкоуровневый клиент для чтения метаданных 1С через DaJet Metadata."""
+
+import logging
 from typing import Optional
 
-from pydajet import MetadataProvider , DataSourceType , Guid , List
+from pydajet import DataSourceType, Guid, List, MetadataProvider
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataClient:
@@ -22,7 +26,11 @@ class MetadataClient:
     }
 
     def __init__(self, connection_string: str, data_source: str = "postgresql"):
-        ds = DataSourceType.PostgreSql if data_source == "postgresql" else DataSourceType.SqlServer
+        ds = (
+            DataSourceType.PostgreSql
+            if data_source == "postgresql"
+            else DataSourceType.SqlServer
+        )
         result = MetadataProvider.Create(ds, connection_string)
         self._provider = result[0]
         self._config = self._provider.GetConfigurations()[0]
@@ -77,13 +85,15 @@ class MetadataClient:
                 entity = self._get_entity(name)
                 if not entity:
                     continue
-                result.append({
-                    'name': name,
-                    'short_name': name.split('.')[-1] if '.' in name else name,
-                    'table': entity.DbName,
-                    'properties': self._extract_properties(entity),
-                    'children': self._extract_children(entity),
-                })
+                result.append(
+                    {
+                        "name": name,
+                        "short_name": name.split(".")[-1] if "." in name else name,
+                        "table": entity.DbName,
+                        "properties": self._extract_properties(entity),
+                        "children": self._extract_children(entity),
+                    }
+                )
             break
         return result
 
@@ -101,17 +111,55 @@ class MetadataClient:
                 cols = []
                 if prop.Columns and prop.Columns.Count > 0:
                     for col in prop.Columns:
-                        cols.append({'name': col.Name, 'type': str(col.Type) if col.Type else None})
-                props.append({'name': prop.Name, 'columns': cols})
+                        cols.append(
+                            {
+                                "name": col.Name,
+                                "type": str(col.Type) if col.Type else None,
+                            }
+                        )
+                props.append({"name": prop.Name, "columns": cols})
         return props
 
     def _extract_children(self, entity) -> list[dict]:
         children = []
         if entity.Entities and entity.Entities.Count > 0:
             for child in entity.Entities:
-                children.append({
-                    'name': child.Name,
-                    'table': child.DbName,
-                    'properties': self._extract_properties(child),
-                })
+                children.append(
+                    {
+                        "name": child.Name,
+                        "table": child.DbName,
+                        "properties": self._extract_properties(child),
+                    }
+                )
         return children
+
+    def _get_entity(self, name: str):
+        """
+        Получает EntityDefinition по имени объекта.
+
+        Args:
+            name: полное имя объекта (например, "Справочник.Контрагенты")
+
+        Returns:
+            EntityDefinition или None
+
+        Raises:
+            MetadataNotImplementedError: для неподдерживаемых типов
+            MetadataNotFoundError: если объект не найден
+        """
+        try:
+            result = self._provider.GetMetadataObject(name)
+            return result[0] if isinstance(result, tuple) else result
+        except NotImplementedError as e:
+            logger.debug(f"GetMetadataObject not implemented for '{name}': {e}")
+            raise MetadataNotImplementedError(
+                f"Metadata object '{name}' is not implemented: {e}"
+            ) from e
+        except AttributeError as e:
+            logger.debug(f"Metadata object '{name}' not found: {e}")
+            return None
+        except Exception as e:
+            logger.error(
+                f"Unexpected error getting metadata for '{name}': {e}", exc_info=True
+            )
+            raise MetadataError(f"Failed to get metadata for '{name}': {e}") from e
