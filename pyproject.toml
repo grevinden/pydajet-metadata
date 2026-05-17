@@ -67,6 +67,7 @@ addopts = [
     "--strict-markers",
     "--cov=src/pydajet",
     "--cov=src/pydajet_metadata",
+    "--cov-config=.coveragerc",
     "--cov-report=html",
     "--cov-report=term",
     "--durations=10",
