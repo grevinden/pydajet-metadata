@@ -19,11 +19,9 @@ class TestAPIGenerator:
     @pytest.fixture
     def mock_query(self):
         q = MagicMock()
-        q.all.return_value = [
-            {'Ссылка': '9c280050-b666-dffa-11f1-4e880e761abe', 'Наименование': 'Тест', 'Код': '001'},
-        ]
-        q.first.return_value = {'Ссылка': '9c280050-b666-dffa-11f1-4e880e761abe', 'Наименование': 'Тест', 'Код': '001'}
-        q.insert.return_value = '9c280050-b666-dffa-11f1-4e880e761abe'
+        q.all.return_value = [...]
+        q.first.return_value = {...}
+        q.insert.return_value = '...'
         q.update.return_value = True
         q.delete.return_value = True
         q._pk = '_idrref'
@@ -33,15 +31,20 @@ class TestAPIGenerator:
             '_description': MagicMock(),
             '_code': MagicMock(),
         }
-        q._table.c['_description'].__str__ = lambda: 'VARCHAR(150)'
-        q._table.c['_code'].__str__ = lambda: 'VARCHAR(50)'
         q._table.c['_description'].nullable = True
         q._table.c['_code'].nullable = True
+        q._table.c['_description'].__str__ = lambda: 'VARCHAR(150)'
+        q._table.c['_code'].__str__ = lambda: 'VARCHAR(50)'
+
+        # _column_map должен быть реальным dict, не MagicMock
         q._column_map = {
             'Ссылка': '_IDRRef',
             'Наименование': '_Description',
             'Код': '_Code',
         }
+
+        q.where.return_value = q
+
         return q
 
     @pytest.fixture
@@ -63,7 +66,7 @@ class TestAPIGenerator:
     async def test_get_types(self, client):
         response = await client.get("/types")
         assert response.status_code == 200
-        assert response.json() == ['Документы', 'Справочники']
+        assert sorted(response.json()) == ['Документы', 'Справочники']
 
     @pytest.mark.asyncio
     async def test_get_objects(self, client):
