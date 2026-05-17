@@ -32,3 +32,26 @@ def format_uuid(uuid: UUID | str | bytes) -> str:
         # Конвертируем 1С-байты в стандартный UUID, затем в строку
         return str(from_1c(uuid))
     return str(uuid)
+
+
+# src/pydajet_metadata/_uuid.py — добавить:
+def is_valid_hex(value: str) -> bool:
+    """Проверяет, является ли строка валидной hex-строкой UUID."""
+    try:
+        clean = value.replace("-", "")
+        return len(clean) == 32 and all(c in "0123456789abcdefABCDEF" for c in clean)
+    except (ValueError, AttributeError):
+        return False
+
+
+def ensure_1c_format(value: str) -> bytes:
+    """
+    Преобразует UUID-строку (с дефисами или без) в 1С-формат bytes.
+
+    Raises:
+        ValueError: если строка не является валидным UUID
+    """
+    clean = value.replace("-", "")
+    if len(clean) != 32:
+        raise ValueError(f"Invalid UUID string: {value}")
+    return to_1c(clean)

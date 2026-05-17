@@ -1,25 +1,20 @@
 """Построитель запросов к таблицам 1С."""
 
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
 
 from pydantic import validate_call
-from sqlalchemy import select, func, insert, update, delete, text
-from sqlalchemy.types import String, Boolean, Integer, Float, LargeBinary, DateTime
+from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy.types import Boolean, DateTime, Float, Integer, LargeBinary, String
 from typing_extensions import Literal
 
-from pydajet_metadata._uuid import generate, to_1c, from_1c, format_uuid
-from pydajet_metadata.session import Session
+from pydajet_metadata._uuid import format_uuid, generate, to_1c
+from pydajet_metadata.mapper import ColumnMapper
 
 
 class Query:
     def __init__(
-        self,
-        session: Session,
-        table_name: str,
-        column_map: dict[str, str],
-        pk: str = "_idrref",
-        owner_key: str = "_idrref",
+        self, session, table_name, column_map, pk="_idrref", owner_key="_idrref"
     ):
         self._session = session
         self._table = session.reflect_table(table_name)
@@ -29,13 +24,13 @@ class Query:
         self._owner_key = owner_key.lower()
         self._where = []
         self._children: dict[str, "Query"] = {}
+        self._mapper = ColumnMapper(self._table, column_map)
 
     def __getattr__(self, name: str):
-        if name in self._column_map:
-            db = self._column_map[name].lower()
-            if db in self._table.c:
-                return self._table.c[db]
-        raise AttributeError(f"Column '{name}' not found")
+        try:
+            return self._mapper.get_db_column(name)
+        except KeyError:
+            raise AttributeError(f"Column '{name}' not found")
 
     def where(self, *conditions):
         self._where = list(conditions)
@@ -103,32 +98,11 @@ class Query:
 
     # ─── Internal ─────────────────────────────────────
 
-    def _row_to_dict(self, row) -> dict[str, Any]:
-        d = {}
-        for col in self._table.columns:
-            human = self._reverse_map.get(col.name.lower(), col.name)
-            val = getattr(row, col.name)
-            if isinstance(val, bytes) and len(val) == 16:
-                val = format_uuid(from_1c(val))
-            elif isinstance(val, bytes):
-                val = val.hex()
-            d[human] = val
-        return d
+    def _row_to_dict(self, row):
+        return self._mapper.db_to_human(row)
 
-    def _human_to_db(self, data: dict[str, Any]) -> dict[str, Any]:
-        db = {}
-        for human, value in data.items():
-            if human in self._column_map:
-                db_name = self._column_map[human].lower()
-                if isinstance(value, str) and self._is_binary(db_name):
-                    try:
-                        value = to_1c(value)
-                    except (ValueError, AttributeError):
-                        pass
-                db[db_name] = value
-            else:
-                db[human.lower()] = value
-        return db
+    def _human_to_db(self, data):
+        return self._mapper.human_to_db(data)
 
     def _fill_defaults(self, db: dict):
         for col in self._table.columns:
