@@ -42,7 +42,7 @@ class TestRepository :
 		session.get_pk = MagicMock ( return_value = '_idrref' )
 		return session
 
-	@patch ( 'pydajet_metadata.repository.MetadataClient' )
+	@patch ( 'pydajet.client.MetadataClient' )
 	@patch ( 'pydajet_metadata.repository.Session' )
 	def test_types ( self , mock_session_cls , mock_client_cls , mock_client , mock_session ) :
 		mock_client_cls.return_value = mock_client
@@ -52,7 +52,7 @@ class TestRepository :
 
 		assert repo.types ( ) == [ 'Документы' , 'Справочники' ]
 
-	@patch ( 'pydajet_metadata.repository.MetadataClient' )
+	@patch ( 'pydajet.client.MetadataClient' )
 	@patch ( 'pydajet_metadata.repository.Session' )
 	def test_objects ( self , mock_session_cls , mock_client_cls , mock_client , mock_session ) :
 		mock_client_cls.return_value = mock_client
@@ -64,7 +64,7 @@ class TestRepository :
 		assert 'ирАлгоритмы' in objects
 		assert 'ТемыУведомлений' in objects
 
-	@patch ( 'pydajet_metadata.repository.MetadataClient' )
+	@patch ( 'pydajet.client.MetadataClient' )
 	@patch ( 'pydajet_metadata.repository.Session' )
 	def test_query ( self , mock_session_cls , mock_client_cls , mock_client , mock_session ) :
 		mock_client_cls.return_value = mock_client
@@ -75,7 +75,7 @@ class TestRepository :
 		q = repo.query ( 'Справочники' , 'ирАлгоритмы' )
 		assert q is not None
 
-	@patch ( 'pydajet_metadata.repository.MetadataClient' )
+	@patch ( 'pydajet.client.MetadataClient' )
 	@patch ( 'pydajet_metadata.repository.Session' )
 	def test_query_invalid_type ( self , mock_session_cls , mock_client_cls , mock_client , mock_session ) :
 		mock_client_cls.return_value = mock_client
@@ -86,7 +86,7 @@ class TestRepository :
 		with pytest.raises ( KeyError ) :
 			repo.query ( 'НесуществующийТип' , 'Объект' )
 
-	@patch ( 'pydajet_metadata.repository.MetadataClient' )
+	@patch ( 'pydajet.client.MetadataClient' )
 	@patch ( 'pydajet_metadata.repository.Session' )
 	def test_attr_access ( self , mock_session_cls , mock_client_cls , mock_client , mock_session ) :
 		mock_client_cls.return_value = mock_client

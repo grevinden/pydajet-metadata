@@ -19,14 +19,21 @@ class TestPolarsBridge :
 	def bridge ( self , mock_repo ) :
 		return PolarsBridge ( mock_repo )
 
-	def test_read_empty ( self , bridge , mock_repo ) :
-		mock_query = MagicMock ( )
-		mock_query.all.return_value = [ ]
-		mock_query._column_map = { 'Наименование' : '_Description' , 'Код' : '_Code' }
-		mock_query._table.c = { }
+	def test_read_empty(self, bridge, mock_repo):
+		mock_query = MagicMock()
+		mock_query.all.return_value = []
+		mock_query._column_map = {'Наименование': '_Description', 'Код': '_Code'}
+		# Добавить мок-колонки
+		mock_query._table = MagicMock()
+		mock_query._table.c = {
+			'_description': MagicMock(),
+			'_code': MagicMock(),
+		}
+		mock_query._table.c['_description'].__str__ = lambda: 'VARCHAR(150)'
+		mock_query._table.c['_code'].__str__ = lambda: 'VARCHAR(50)'
 		mock_repo.query.return_value = mock_query
 
-		df = bridge.read ( 'Справочники' , 'ирАлгоритмы' )
+		df = bridge.read('Справочники', 'ирАлгоритмы')
 		assert df.height == 0
 
 	def test_write ( self , bridge , mock_repo ) :

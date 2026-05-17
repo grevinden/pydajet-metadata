@@ -61,7 +61,7 @@ class TestQuery :
 		assert result [ 'Наименование' ] == 'Тестовый алгоритм'
 		assert result [ 'Код' ] == '001'
 		assert result [ 'ТекстАлгоритма' ] == 'Сообщить("Привет");'
-		assert '9c280050' in result [ 'Ссылка' ]  # UUID с дефисами
+		assert '5000289c-66b6-fadf-11f1-4e880e761abe' == result['Ссылка']
 
 	def test_human_to_db ( self , query ) :
 		data = {
