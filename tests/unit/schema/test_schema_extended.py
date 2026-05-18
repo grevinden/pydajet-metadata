@@ -155,10 +155,11 @@ class TestCreateModelWithChildren:
         gen._repo = mock_repo
 
         with patch.object(gen, '_create_model') as mock_create_child:
-            mock_child_model = MagicMock(spec=BaseModel)
+            # Use an actual BaseModel subclass for child model so Pydantic accepts it
+            mock_child_model = type('ChildModel', (BaseModel,), {})
             mock_create_child.return_value = mock_child_model
             
-            model = gen._create_model('ParentModel', mock_query)
+            model = SchemaGenerator._create_model(gen, 'ParentModel', mock_query)
 
             # Проверяем, что поле табличной части создано
             fields = model.model_fields

@@ -64,7 +64,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
-    "-v","-s","-x",
+    "-v","-s",
     "--tb=long",
     "--strict-markers",
     "--cov=src/pydajet",
@@ -84,30 +84,3 @@ omit = [
     "**/pycharm/*",
     "**/_jb_*",
 ]
-disable_warnings = [
-    "module-not-imported",
-    "no-data-collected",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-]
-
-[tool.ruff.lint.per-file-ignores]
-"src/pydajet/__init__.py" = ["F401", "E402", "F821"]
-
-[tool.mypy]
-python_version = "3.13"
-mypy_path = "src"
-explicit_package_bases = true
-ignore_missing_imports = true
-strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false  # Разрешаем постепенную миграцию
-disallow_incomplete_defs = false

@@ -1,38 +1,45 @@
 """FastAPI-генератор."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import Field, create_model
+from pydantic.main import BaseModel
 
 from pydajet_metadata._types import sa_to_python
+from pydajet_metadata.protocols import IMetadataClient
 
 if TYPE_CHECKING:
     from pydajet_metadata.protocols import IRepository
 
 
 class APIGenerator:
+    """Генератор FastAPI-приложения по репозиторию 1С."""
+
     def __init__(self, repo: "IRepository", title: str = "1С REST API"):
+        """Инициализирует генератор API, принимая репозиторий с метаданными."""
         self._repo = repo
         self._app = FastAPI(title=title, version="1.0.0")
-        self._models = {}
+        self._models: dict[str, dict[str, type[BaseModel]]] = {}
 
     @property
     def app(self) -> FastAPI:
+        """Возвращает сгенерированное FastAPI-приложение."""
         return self._app
 
-    def generate(self):
+    def generate(self) -> FastAPI:
+        """Собирает модель, маршруты и информацию, возвращает FastAPI-приложение."""
         self._generate_models()
         self._generate_endpoints()
         self._generate_info()
         return self._app
 
-    def _generate_models(self):
+    def _generate_models(self) -> None:
         for type_name in self._repo.types():
             for obj_name in self._repo.objects(type_name):
                 query = self._repo.query(type_name, obj_name)
-                fields = {}
+                fields: dict[str, Any] = {}
                 for human, db_name in query._column_map.items():
                     col = query._table.c[db_name.lower()]
                     py_type = sa_to_python(col.type)
@@ -41,7 +48,7 @@ class APIGenerator:
                     f"{obj_name}Response", **fields, __module__=__name__
                 )
 
-                create_fields = {}
+                create_fields: dict[str, Any] = {}
                 for human, db_name in query._column_map.items():
                     if db_name.lower() in (query._pk, "_version", "_marked"):
                         continue
@@ -55,7 +62,7 @@ class APIGenerator:
                     f"{obj_name}Create", **create_fields, __module__=__name__
                 )
 
-                update_fields = {}
+                update_fields: dict[str, Any] = {}
                 for human, db_name in query._column_map.items():
                     if db_name.lower() == query._pk:
                         continue
@@ -73,68 +80,69 @@ class APIGenerator:
                     "update": update,
                 }
 
-    def _generate_endpoints(self):
-        for key, m in self._models.items():
+    def _generate_endpoints(self) -> None:
+        for key, models in self._models.items():
             type_name, obj_name = key.split("/")
             prefix = f"/{type_name}/{obj_name}"
 
             @self._app.get(
                 f"{prefix}",
-                response_model=list[m["response"]],  # noqa: F821
+                response_model=list[models["response"]],
                 tags=[type_name],
             )
             def get_all(skip: int = 0, limit: int = 100):
-                rows = m["query"].all()
-                return [m["response"](**r) for r in rows[skip : skip + limit]]
+                rows = models["query"].all()
+                return [models["response"](**r) for r in rows[skip : skip + limit]]
 
             @self._app.get(
                 f"{prefix}/{{id}}",
-                response_model=m["response"],  # noqa: F821
+                response_model=models["response"],
                 tags=[type_name],
             )
             def get_by_id(id: str):
                 row = (
-                    m["query"].where(m["query"]._table.c[m["query"]._pk] == id).first()
+                    models["query"].where(models["query"]._table.c[models["query"]._pk] == id).first()
                 )
                 if not row:
                     raise HTTPException(404, "Not found")
-                return m["response"](**row)
+                return models["response"](**row)
 
-            @self._app.post(f"{prefix}", response_model=m["response"], tags=[type_name])
-            def create(data: m["create"]):
-                new_id = m["query"].insert(data.model_dump(exclude_none=True))
-                return m["response"](
-                    **m["query"]
-                    .where(m["query"]._table.c[m["query"]._pk] == new_id)
+            @self._app.post(f"{prefix}", response_model=models["response"], tags=[type_name])
+            def create(data: models["create"]):
+                new_id = models["query"].insert(data.model_dump(exclude_none=True))
+                return models["response"](
+                    **models["query"]
+                    .where(models["query"]._table.c[models["query"]._pk] == new_id)
                     .first()
                 )
 
             @self._app.put(
-                f"{prefix}/{{id}}", response_model=m["response"], tags=[type_name]
+                f"{prefix}/{{id}}", response_model=models["response"], tags=[type_name]
             )
-            def update(id: str, data: m["update"]):
-                if not m["query"].update(id, data.model_dump(exclude_none=True)):
+            def update(id: str, data: models["update"]):
+                if not models["query"].update(id, data.model_dump(exclude_none=True)):
                     raise HTTPException(404, "Not found")
-                return m["response"](
-                    **m["query"]
-                    .where(m["query"]._table.c[m["query"]._pk] == id)
+                return models["response"](
+                    **models["query"]
+                    .where(models["query"]._table.c[models["query"]._pk] == id)
                     .first()
                 )
 
             @self._app.delete(f"{prefix}/{{id}}", tags=[type_name])
             def delete(id: str):
-                if not m["query"].delete(id):
+                if not models["query"].delete(id):
                     raise HTTPException(404, "Not found")
                 return {"status": "deleted"}
 
-    def _generate_info(self):
+    def _generate_info(self) -> None:
         @self._app.get("/types", tags=["Info"])
-        def types():
+        def types() -> list[str]:
             return self._repo.types()
 
-        @self._app.get("/types/{type_name}/objects", tags=["Info"])
-        def objects(type_name: str):
+        @self._app.get(r"/types/{type_name}/objects", tags=["Info"])
+        def objects(type_name: str) -> list[str]:
             return self._repo.objects(type_name)
 
-    def run(self, host="0.0.0.0", port=8000):
+    def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
+        """Запускает FastAPI-сервер на указанном хосте и порту."""
         uvicorn.run(self._app, host=host, port=port)

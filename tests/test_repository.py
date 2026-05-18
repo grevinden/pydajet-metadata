@@ -74,6 +74,26 @@ class TestRepository:
                 with pytest.raises(KeyError):
                     repo.query('НесуществующийТип', 'Объект')
 
+    def test_repository_accepts_protocol_client_without_pydajet(
+        self, mock_client, mock_session, monkeypatch
+    ):
+        monkeypatch.setitem(sys.modules, 'pydajet', None)
+        monkeypatch.setitem(sys.modules, 'pydajet.client', None)
+
+        with patch('pydajet_metadata.repository.Session', return_value=mock_session):
+            repo = Repository(client=mock_client, session=mock_session)
+            assert repo._client is mock_client
+            assert repo.types() == ['Документы', 'Справочники']
+
+    def test_repository_client_factory(self, mock_client, mock_session):
+        with patch('pydajet_metadata.repository.Session', return_value=mock_session):
+            repo = Repository(
+                connection_string="Host=localhost;Database=TestDB;Username=test;Password=test;",
+                client_factory=lambda cs, ds: mock_client,
+                session=mock_session,
+            )
+            assert repo._client is mock_client
+
     def test_attr_access(self, mock_client, mock_session):
         with patch('pydajet_metadata.repository.Session', return_value=mock_session):
             with patch('pydajet.client.MetadataClient', return_value=mock_client):

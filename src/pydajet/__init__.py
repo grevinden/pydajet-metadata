@@ -34,7 +34,7 @@ from sqlalchemy.dialects.postgresql.base import ischema_names
 ischema_names["mvarchar"] = VARCHAR
 
 from pydajet.client import MetadataClient
-from pydajet_metadata._uuid import format_uuid, from_1c, generate, to_1c
+from pydajet._uuid import format_uuid, from_1c, generate, to_1c
 
 __all__ = [
     "MetadataProvider",

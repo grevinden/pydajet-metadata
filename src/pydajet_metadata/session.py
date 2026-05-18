@@ -38,22 +38,25 @@ class Session:  # Структурно соответствует ISession
 
     @property
     def engine(self) -> Engine:
+        """Возвращает SQLAlchemy Engine, используемый сессией."""
         return self._engine
 
     def reflect_table(self, table_name: str) -> Table:
+        """Возвращает SQLAlchemy Table по имени таблицы, с кэшированием схемы."""
         key = table_name.lower()
         if key not in self._cache:
             cols = self._inspector.get_columns(key)
             columns: List[Column[Any]] = [
-                Column(c["name"], pg_to_sqlalchemy(str(c["type"]))) for c in cols
+                Column(c["name"].lower(), pg_to_sqlalchemy(str(c["type"]))) for c in cols
             ]
             self._cache[key] = Table(key, MetaData(), *columns)
         return self._cache[key]
 
     def get_pk(self, table_name: str) -> str:
+        """Возвращает имя первичного ключа для таблицы. Если PK не определён, берёт первую колонку."""
         pk = self._inspector.get_pk_constraint(table_name.lower())
         if pk and pk.get("constrained_columns"):
-            return pk["constrained_columns"][0]
+            return pk["constrained_columns"][0].lower()
         return list(self.reflect_table(table_name).columns.keys())[0]
 
     @contextmanager
@@ -95,12 +98,7 @@ class Session:  # Структурно соответствует ISession
 
     @contextmanager
     def savepoint(self) -> Iterator[Session]:
-        """
-        Контекстный менеджер savepoint для вложенных транзакций.
-
-        Автоматически создаёт точку сохранения при входе
-        и откатывает/фиксирует её при выходе.
-        """
+        """Контекстный менеджер для создания savepoint внутри текущей транзакции."""
         connection = self._engine if hasattr(self._engine, "connect") else self._engine
 
         if hasattr(connection, "begin_nested"):

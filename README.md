@@ -49,7 +49,36 @@ src/
 | `pydajet` | Низкоуровневый доступ к API DaJet Metadata через .NET Runtime | .NET Runtime, pythonnet |
 | `pydajet_metadata` | Высокоуровневый интерфейс для работы с данными | SQLAlchemy, Polars, FastAPI |
 
+Слой `pydajet_metadata` использует Protocol-based архитектуру:
+- `IMetadataClient` для клиента метаданных
+- `ISession` для работы с сессией БД
+- `IRepository`, `IQuery`, `IColumnMapper` для прикладного API
+
 Слой `pydajet_metadata` **не требует .NET Runtime** для импорта — он загружается лениво только при создании экземпляра `MetadataClient`. Это позволяет запускать тесты и использовать вспомогательные функции без установленного .NET.
+
+#### Protocol-based Dependency Injection
+
+`Repository` может принимать объект, реализующий `IMetadataClient`, или фабрику клиента.
+
+```python
+from pydajet_metadata import IRepository, Repository
+
+class FakeMetadataClient:
+    platform_version = 10
+
+    def list_types(self):
+        return ['Справочники']
+
+    def list_objects(self, type_name: str):
+        return []
+
+repo = Repository(
+    client=FakeMetadataClient(),
+    session=FakeSession(),
+)
+```
+
+Это позволяет использовать structural typing вместо жестких импортов `pydajet`.
 
 ---
 

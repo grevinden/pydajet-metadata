@@ -23,10 +23,11 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
         return f"ColumnMapper(columns={len(self._column_map)})"
 
     def __init__(self, table: Any, column_map: dict[str, str]) -> None:
-        """
+        """Инициализирует маппер колонок для одной таблицы.
+
         Args:
-                table: SQLAlchemy Table
-                column_map: {human_name: db_name}
+            table: SQLAlchemy Table.
+            column_map: Словарь human_name → db_name.
         """
         self._table = table
         self._column_map = column_map  # {human: db_name}
@@ -46,6 +47,8 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
                     except (ValueError, AttributeError):
                         pass
                 db_data[db_name] = value
+            elif human_name.lower() in self._column_map:
+                db_data[human_name] = value
             else:
                 db_data[human_name.lower()] = value
         return db_data

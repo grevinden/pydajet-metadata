@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataClient:
+    """Клиент метаданных 1С, работающий поверх DaJet Metadata."""
+
     PREFIX_MAP = {
         "Справочник.": "Справочники",
         "Документ.": "Документы",
@@ -37,6 +39,7 @@ class MetadataClient:
         self._type_map = self._build_type_map()
 
     def _build_type_map(self) -> dict:
+        """Строит карту типов метаданных на основе конфигурации 1С."""
         type_map = {}
         for type_uuid in self._config.Metadata.Keys:
             guids = self._config.Metadata[type_uuid]
@@ -66,9 +69,11 @@ class MetadataClient:
         return self._config.Alias
 
     def list_types(self) -> list[str]:
+        """Возвращает список типов метаданных (справочники, документы и т.д.)."""
         return sorted(set(self._type_map.values()))
 
     def list_objects(self, type_name: str) -> list[dict]:
+        """Возвращает список объектов указанного типа вместе со схемой и табличными частями."""
         result = []
         for type_uuid, detected_type in self._type_map.items():
             if detected_type != type_name:

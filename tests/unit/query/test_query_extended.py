@@ -484,21 +484,21 @@ class TestQueryVersionHandling:
         mock_to_1c.return_value = b'\x00' * 16
 
         mock_conn = MagicMock()
-        mock_conn.execute.return_value.scalar.return_value = 3  # текущая версия
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_result.scalar.return_value = 3  # текущая версия
+        mock_conn.execute.return_value = mock_result
         mock_session.engine.connect.return_value.__enter__.return_value = mock_conn
         mock_session.engine.begin.return_value.__enter__.return_value = mock_conn
 
         query = Query(mock_session, '_Reference53', {}, pk='_IDRRef')
-        
+
         # Мокаем update чтобы проверить, что _version=4 передаётся
         with patch('pydajet_metadata.query.update') as mock_update_func:
-            mock_result = MagicMock()
-            mock_result.rowcount = 1
-            mock_conn.execute.return_value = mock_result
             mock_update_func.return_value.where.return_value.values.return_value = MagicMock()
-            
+
             query.Изменить('uuid', {'Наименование': 'New'})
-            
+
             # Проверяем, что values() вызван с _version=4
             call_kwargs = mock_update_func.return_value.where.return_value.values.call_args[1]
             assert call_kwargs['_version'] == 4

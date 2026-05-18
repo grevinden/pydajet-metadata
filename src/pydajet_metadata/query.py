@@ -50,12 +50,14 @@ class Query:
             raise AttributeError(f"Column '{name}' not found")
 
     def where(self, *conditions: Any) -> Query:
+        """Добавляет WHERE-условия к запросу и возвращает self для цепочки."""
         self._where = list(conditions)
         return self
 
     # ─── Read ─────────────────────────────────────────
 
     def all(self) -> list[dict[str, Any]]:
+        """Возвращает все строки, соответствующие текущему фильтру."""
         stmt = select(self._table)
         for c in self._where:
             stmt = stmt.where(c)
@@ -63,6 +65,7 @@ class Query:
             return [self._row_to_dict(r) for r in conn.execute(stmt).all()]
 
     def first(self) -> Optional[dict[str, Any]]:
+        """Возвращает первую строку или None, если записей нет."""
         stmt = select(self._table).limit(1)
         for c in self._where:
             stmt = stmt.where(c)
@@ -71,6 +74,7 @@ class Query:
             return self._row_to_dict(row) if row else None
 
     def count(self) -> int:
+        """Возвращает количество строк, соответствующих текущему фильтру."""
         stmt = select(func.count()).select_from(self._table)
         for c in self._where:
             stmt = stmt.where(c)
@@ -81,6 +85,7 @@ class Query:
     # ─── Write ────────────────────────────────────────
 
     def insert(self, data: dict[str, Any], extra: dict[str, Any] | None = None) -> str:
+        """Вставляет новую запись и возвращает UUID созданного объекта."""
         new_uuid = generate()
         db = self._human_to_db(data)
         db[self._pk] = to_1c(new_uuid)
@@ -100,10 +105,11 @@ class Query:
         return format_uuid(new_uuid)
 
     def update(self, record_id: str, data: dict[str, Any]) -> bool:
+        """Обновляет запись по UUID, возвращает True, если строка была изменена."""
         db = self._human_to_db(data)
         stmt = (
             update(self._table)
-            .where(self._table.c[self._pk] == to_1c(record_id))
+            .where(self._pk_condition(record_id))
             .values(**db)
         )
         with self._session.engine.begin() as conn:
@@ -111,10 +117,21 @@ class Query:
             return bool(result.rowcount > 0)
 
     def delete(self, record_id: str) -> bool:
-        stmt = delete(self._table).where(self._table.c[self._pk] == to_1c(record_id))
+        """Удаляет запись по UUID и возвращает True, если строка была удалена."""
+        stmt = delete(self._table).where(self._pk_condition(record_id))
         with self._session.engine.begin() as conn:
             result = conn.execute(stmt)
             return bool(result.rowcount > 0)
+
+    def _pk_condition(self, record_id: str) -> Any:
+        if self._pk in self._table.c:
+            return self._table.c[self._pk] == to_1c(record_id)
+        return text(self._pk) == to_1c(record_id)
+
+    def _pk_column(self) -> Any:
+        if self._pk in self._table.c:
+            return self._table.c[self._pk]
+        return text(self._pk)
 
     # ─── Internal ─────────────────────────────────────
 
@@ -189,7 +206,7 @@ class Query:
         """
         if row_id is not None:
             # Блокировка строки через SELECT ... FOR UPDATE
-            pk_col = self._table.c[self._pk]
+            pk_col = self._pk_column()
             stmt = select(self._table).where(pk_col == to_1c(row_id))
             if mode == "shared":
                 stmt = stmt.with_for_update(read=True, nowait=nowait)
@@ -215,7 +232,7 @@ class Query:
             return 0
 
         pk_bytes = to_1c(record_id)
-        stmt = select(self._table.c._version).where(self._table.c[self._pk] == pk_bytes)
+        stmt = select(self._table.c._version).where(self._pk_column() == pk_bytes)
         with self._session.engine.connect() as conn:
             result = conn.execute(stmt).scalar()
             return result if result is not None else 0
@@ -245,7 +262,7 @@ class Query:
 
         stmt = (
             update(self._table)
-            .where(self._table.c[self._pk] == pk_bytes)
+            .where(self._pk_column() == pk_bytes)
             .values(**db_data)
         )
 

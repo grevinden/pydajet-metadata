@@ -43,7 +43,7 @@ def mock_session():
     session = Mock()
     session.get_pk.return_value = "_idrref"
     session.reflect_table = Mock(return_value=Mock(c={"_FileName": Mock()}))
-    session.engine = Mock()
+    session.engine = MagicMock()
     session.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar.return_value = b"0123456789abcdef"
     session.close = Mock()
     return session

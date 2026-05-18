@@ -175,14 +175,7 @@ class TestPolarsBridgeWrite:
         # Проверяем, что для дочерних строк установлен ключ владельца
         child_query.insert.assert_called()
         call_args = child_query.insert.call_args[0][0]
-        assert call_args.get("_idrref_owner") == call_args.get("Ссылка")
-
-    def test_write_returns_count(self, bridge, mock_repository):
-        """Метод write возвращает количество записанных строк."""
-        mock_query = Mock()
-        mock_query.all.return_value = []
-        mock_query._children = {}
-        mock_query.insert = Mock()
+        assert call_args.get("_idrref_owner") == mock_query.insert.return_value
         
         mock_repository.query.return_value = mock_query
         

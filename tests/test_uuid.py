@@ -7,6 +7,18 @@ from hypothesis import given, strategies as st
 from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
 
 
+def test_pydajet_exposes_uuid_helpers():
+    try:
+        from pydajet import format_uuid as pydajet_format_uuid
+    except Exception:
+        pytest.skip("pydajet import requires .NET runtime")
+
+    if hasattr(pydajet_format_uuid, 'return_value'):
+        pytest.skip("pydajet is mocked in the current test environment")
+
+    assert pydajet_format_uuid("5000289c66b6fadf11f14e880e761abe") == "5000289c-66b6-fadf-11f1-4e880e761abe"
+
+
 class TestUUIDConversion:
 	"""Конвертация 1С ↔ стандартный UUID."""
 
