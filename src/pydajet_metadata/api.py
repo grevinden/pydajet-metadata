@@ -1,9 +1,10 @@
 """FastAPI-генератор."""
+
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI , HTTPException
-from pydantic import Field , create_model
+from fastapi import FastAPI, HTTPException
+from pydantic import Field, create_model
 
 from pydajet_metadata._types import sa_to_python
 from pydajet_metadata.repository import Repository
@@ -34,11 +35,13 @@ class APIGenerator:
                     col = query._table.c[db_name.lower()]
                     py_type = sa_to_python(col.type)
                     fields[human] = (Optional[py_type], Field(default=None))
-                response = create_model(f"{obj_name}Response", **fields, __module__=__name__)
+                response = create_model(
+                    f"{obj_name}Response", **fields, __module__=__name__
+                )
 
                 create_fields = {}
                 for human, db_name in query._column_map.items():
-                    if db_name.lower() in (query._pk, '_version', '_marked'):
+                    if db_name.lower() in (query._pk, "_version", "_marked"):
                         continue
                     col = query._table.c[db_name.lower()]
                     py_type = sa_to_python(col.type)
@@ -46,7 +49,9 @@ class APIGenerator:
                         create_fields[human] = (Optional[py_type], Field(default=None))
                     else:
                         create_fields[human] = (py_type, Field(...))
-                create = create_model(f"{obj_name}Create", **create_fields, __module__=__name__)
+                create = create_model(
+                    f"{obj_name}Create", **create_fields, __module__=__name__
+                )
 
                 update_fields = {}
                 for human, db_name in query._column_map.items():
@@ -55,47 +60,68 @@ class APIGenerator:
                     col = query._table.c[db_name.lower()]
                     py_type = sa_to_python(col.type)
                     update_fields[human] = (Optional[py_type], Field(default=None))
-                update = create_model(f"{obj_name}Update", **update_fields, __module__=__name__)
+                update = create_model(
+                    f"{obj_name}Update", **update_fields, __module__=__name__
+                )
 
                 self._models[f"{type_name}/{obj_name}"] = {
-                    'query': query, 'response': response, 'create': create, 'update': update,
+                    "query": query,
+                    "response": response,
+                    "create": create,
+                    "update": update,
                 }
 
     def _generate_endpoints(self):
         for key, m in self._models.items():
-            type_name, obj_name = key.split('/')
+            type_name, obj_name = key.split("/")
             prefix = f"/{type_name}/{obj_name}"
 
-            @self._app.get(f"{prefix}", response_model=list[m['response']], tags=[type_name])
+            @self._app.get(
+                f"{prefix}",
+                response_model=list[m["response"]],  # noqa: F821
+                tags=[type_name],
+            )
             def get_all(skip: int = 0, limit: int = 100):
-                rows = m['query'].all()
-                return [m['response'](**r) for r in rows[skip:skip + limit]]
+                rows = m["query"].all()
+                return [m["response"](**r) for r in rows[skip : skip + limit]]
 
-            @self._app.get(f"{prefix}/{{id}}", response_model=m['response'], tags=[type_name])
+            @self._app.get(
+                f"{prefix}/{{id}}",
+                response_model=m["response"],  # noqa: F821
+                tags=[type_name],
+            )
             def get_by_id(id: str):
-                row = m['query'].where(m['query']._table.c[m['query']._pk] == id).first()
+                row = (
+                    m["query"].where(m["query"]._table.c[m["query"]._pk] == id).first()
+                )
                 if not row:
                     raise HTTPException(404, "Not found")
-                return m['response'](**row)
+                return m["response"](**row)
 
-            @self._app.post(f"{prefix}", response_model=m['response'], tags=[type_name])
-            def create(data: m['create']):
-                new_id = m['query'].insert(data.model_dump(exclude_none=True))
-                return m['response'](**m['query'].where(
-                    m['query']._table.c[m['query']._pk] == new_id
-                ).first())
+            @self._app.post(f"{prefix}", response_model=m["response"], tags=[type_name])
+            def create(data: m["create"]):
+                new_id = m["query"].insert(data.model_dump(exclude_none=True))
+                return m["response"](
+                    **m["query"]
+                    .where(m["query"]._table.c[m["query"]._pk] == new_id)
+                    .first()
+                )
 
-            @self._app.put(f"{prefix}/{{id}}", response_model=m['response'], tags=[type_name])
-            def update(id: str, data: m['update']):
-                if not m['query'].update(id, data.model_dump(exclude_none=True)):
+            @self._app.put(
+                f"{prefix}/{{id}}", response_model=m["response"], tags=[type_name]
+            )
+            def update(id: str, data: m["update"]):
+                if not m["query"].update(id, data.model_dump(exclude_none=True)):
                     raise HTTPException(404, "Not found")
-                return m['response'](**m['query'].where(
-                    m['query']._table.c[m['query']._pk] == id
-                ).first())
+                return m["response"](
+                    **m["query"]
+                    .where(m["query"]._table.c[m["query"]._pk] == id)
+                    .first()
+                )
 
             @self._app.delete(f"{prefix}/{{id}}", tags=[type_name])
             def delete(id: str):
-                if not m['query'].delete(id):
+                if not m["query"].delete(id):
                     raise HTTPException(404, "Not found")
                 return {"status": "deleted"}
 

@@ -1,31 +1,44 @@
 """Маппинг типов PostgreSQL → SQLAlchemy → Python."""
+
 from datetime import datetime
 
-from sqlalchemy.types import Integer , String , Boolean , DateTime , LargeBinary , Float
+from sqlalchemy.types import Boolean, DateTime, Float, Integer, LargeBinary, String
 
 PG_TO_SA = {
-    'bytea': LargeBinary,
-    'integer': Integer,
-    'boolean': Boolean,
-    'timestamp': DateTime,
-    'character varying': String,
-    'mvarchar': String,
-    'varchar': String,
-    'text': String,
-    'numeric': Float,
-    'bigint': Integer,
-    'smallint': Integer,
-    'double precision': Float,
-    'real': Float,
+    "bytea": LargeBinary,
+    "integer": Integer,
+    "boolean": Boolean,
+    "timestamp": DateTime,
+    "character varying": String,
+    "mvarchar": String,
+    "varchar": String,
+    "text": String,
+    "numeric": Float,
+    "bigint": Integer,
+    "smallint": Integer,
+    "double precision": Float,
+    "real": Float,
 }
 
 SA_TO_PYTHON = {
-    'string': str, 'varchar': str, 'mvarchar': str, 'text': str,
-    'datetime': datetime, 'timestamp': datetime,
-    'boolean': bool,
-    'integer': int, 'bigint': int, 'smallint': int,
-    'float': float, 'numeric': float, 'decimal': float, 'double precision': float, 'real': float,
-    'bytea': bytes, 'binary': bytes, 'largebinary': bytes,
+    "string": str,
+    "varchar": str,
+    "mvarchar": str,
+    "text": str,
+    "datetime": datetime,
+    "timestamp": datetime,
+    "boolean": bool,
+    "integer": int,
+    "bigint": int,
+    "smallint": int,
+    "float": float,
+    "numeric": float,
+    "decimal": float,
+    "double precision": float,
+    "real": float,
+    "bytea": bytes,
+    "binary": bytes,
+    "largebinary": bytes,
 }
 
 

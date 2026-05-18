@@ -1,7 +1,8 @@
 """Генератор Pydantic-моделей."""
+
 from typing import Optional
 
-from pydantic import BaseModel , Field , create_model
+from pydantic import BaseModel, Field, create_model
 
 from pydajet_metadata._types import sa_to_python
 from pydajet_metadata._uuid import to_1c
@@ -35,7 +36,10 @@ class SchemaGenerator:
 
         for child_name, child_query in query._children.items():
             child_model = self._create_model(child_name, child_query)
-            fields[child_name] = (Optional[list[child_model]], Field(default_factory=list))
+            fields[child_name] = (
+                Optional[list[child_model]],
+                Field(default_factory=list),
+            )
 
         model = create_model(name, **fields, __module__=__name__)
         model._query = query
@@ -58,12 +62,14 @@ class SchemaGenerator:
             for child_name in query._children:
                 if child_name in data and data[child_name]:
                     parts[child_name] = [
-                        item.model_dump(exclude_none=True) if isinstance(item, BaseModel) else item
+                        item.model_dump(exclude_none=True)
+                        if isinstance(item, BaseModel)
+                        else item
                         for item in data[child_name]
                     ]
                 data.pop(child_name, None)
 
-            pk = data.get('Ссылка') or data.get(list(query._column_map.keys())[0])
+            pk = data.get("Ссылка") or data.get(list(query._column_map.keys())[0])
             if pk and query.count():
                 query.update(pk, data)
             else:

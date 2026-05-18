@@ -9,22 +9,29 @@ from sqlalchemy.types import Boolean, DateTime, Float, Integer, LargeBinary, Str
 from typing_extensions import Literal
 
 from pydajet_metadata._uuid import format_uuid, generate, to_1c
+from pydajet_metadata.exceptions import VersionConflictError
 from pydajet_metadata.mapper import ColumnMapper
 
 
 class Query:
+    def __repr__(self) -> str:
+        return (
+            f"Query(table={self._table.name!r}, "
+            f"pk={self._pk!r}, "
+            f"columns={len(self._mapper.human_names)})"
+        )
+
     def __init__(
         self, session, table_name, column_map, pk="_idrref", owner_key="_idrref"
     ):
         self._session = session
         self._table = session.reflect_table(table_name)
-        self._column_map = column_map
-        self._reverse_map = {v.lower(): k for k, v in column_map.items()}
+        # ColumnMapper теперь содержит _column_map и _reverse_map
+        self._mapper = ColumnMapper(self._table, column_map)
         self._pk = pk.lower()
         self._owner_key = owner_key.lower()
         self._where = []
-        self._children: dict[str, "Query"] = {}
-        self._mapper = ColumnMapper(self._table, column_map)
+        self._children = {}
 
     def __getattr__(self, name: str):
         try:
@@ -188,3 +195,69 @@ class Query:
                 sql += " NOWAIT"
             with self._session.engine.begin() as conn:
                 conn.execute(text(sql))
+
+    def _get_current_version(self, record_id: str) -> int:
+        """Получает текущую версию объекта (_Version) из БД."""
+        if "_version" not in self._table.c:
+            return 0
+
+        pk_bytes = to_1c(record_id)
+        stmt = select(self._table.c._version).where(self._table.c[self._pk] == pk_bytes)
+        with self._session.engine.connect() as conn:
+            result = conn.execute(stmt).scalar()
+            return result if result is not None else 0
+
+    @validate_call
+    def Изменить(
+        self,
+        record_id: str,
+        data: dict[str, Any],
+        expected_version: int = None,
+    ) -> bool:
+        pk_bytes = to_1c(record_id)
+        db_data = self._mapper.human_to_db(data)
+
+        if "_version" in self._table.c:
+            current_version = self._get_current_version(record_id)
+
+            if expected_version is not None and current_version != expected_version:
+                raise VersionConflictError(
+                    f"Version conflict for object {record_id}: "
+                    f"expected version {expected_version}, "
+                    f"actual version {current_version}. "
+                    f"Another user has modified this object."
+                )
+
+            db_data["_version"] = current_version + 1
+
+        stmt = (
+            update(self._table)
+            .where(self._table.c[self._pk] == pk_bytes)
+            .values(**db_data)
+        )
+
+        with self._session.engine.begin() as conn:
+            result = conn.execute(stmt)
+            return result.rowcount > 0
+
+    @validate_call
+    def БезопасноеИзменить(
+        self,
+        record_id: str,
+        data: dict[str, Any],
+    ) -> bool:
+        current = self._get_current_version(record_id)
+        return self.Изменить(record_id, data, expected_version=current)
+
+    @validate_call
+    def ПолучитьВерсию(self, record_id: str) -> int:
+        """
+        Возвращает текущую версию объекта.
+
+        Args:
+            record_id: UUID записи в стандартном формате
+
+        Returns:
+            Текущее значение _Version
+        """
+        return self._get_current_version(record_id)

@@ -2,13 +2,16 @@
 
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, inspect, MetaData, Table, Column
+from sqlalchemy import Column, MetaData, Table, create_engine, inspect
 from sqlalchemy.engine import Engine
 
 from pydajet_metadata._types import pg_to_sqlalchemy
 
 
 class Session:
+    def __repr__(self) -> str:
+        return f"Session(engine={self._engine.url.database!r})"
+
     def __init__(self, connection_string: str):
         params = self._parse_cs(connection_string)
         url = (

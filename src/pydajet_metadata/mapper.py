@@ -2,8 +2,10 @@
 """ColumnMapper: преобразование human ↔ db ↔ python для одной таблицы."""
 
 from typing import Any
+
 from sqlalchemy import LargeBinary
-from pydajet_metadata._uuid import to_1c, from_1c, format_uuid
+
+from pydajet_metadata._uuid import format_uuid, from_1c, to_1c
 
 
 class ColumnMapper:
@@ -13,6 +15,9 @@ class ColumnMapper:
     Отвечает ТОЛЬКО за преобразование имён и значений.
     Не зависит от Query, Session, транзакций.
     """
+
+    def __repr__(self) -> str:
+        return f"ColumnMapper(columns={len(self._column_map)})"
 
     def __init__(self, table, column_map: dict[str, str]):
         """
