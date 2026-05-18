@@ -1,29 +1,33 @@
 """Генератор Pydantic-моделей."""
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field, create_model
 
 from pydajet_metadata._types import sa_to_python
 from pydajet_metadata._uuid import to_1c
-from pydajet_metadata.repository import Repository
+
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import IRepository
 
 
 class SchemaGenerator:
-    def __init__(self, repo: Repository):
+    def __init__(self, repo: "IRepository") -> None:
         self._repo = repo
         self._models: dict[str, type[BaseModel]] = {}
         self._generate()
 
-    def _generate(self):
+    def _generate(self) -> None:
         for type_name in self._repo.types():
             for obj_name in self._repo.objects(type_name):
                 query = self._repo.query(type_name, obj_name)
                 model = self._create_model(obj_name, query)
                 self._models[f"{type_name}.{obj_name}"] = model
 
-    def _create_model(self, name: str, query) -> type[BaseModel]:
-        fields = {}
+    def _create_model(self, name: str, query: Any) -> type[BaseModel]:
+        fields: dict[str, Any] = {}
         for human, db_name in query._column_map.items():
             col = query._table.c[db_name.lower()]
             py_type = sa_to_python(col.type)
@@ -37,15 +41,14 @@ class SchemaGenerator:
         for child_name, child_query in query._children.items():
             child_model = self._create_model(child_name, child_query)
             fields[child_name] = (
-                Optional[list[child_model]],
+                Optional[list[child_model]],  # type: ignore[valid-type]
                 Field(default_factory=list),
             )
 
         model = create_model(name, **fields, __module__=__name__)
         model._query = query
 
-        @classmethod
-        def from_db(cls, record_id: str):
+        def from_db(cls: type[BaseModel], record_id: str) -> Optional[BaseModel]:
             row = query.where(query._table.c[query._pk] == to_1c(record_id)).first()
             if row:
                 for child_name, child_query in query._children.items():
@@ -56,9 +59,11 @@ class SchemaGenerator:
                 return cls(**row)
             return None
 
-        def save(self):
+        model.from_db = classmethod(from_db)  # type: ignore[assignment]
+
+        def save(self: BaseModel) -> BaseModel:
             data = self.model_dump(exclude_none=True)
-            parts = {}
+            parts: dict[str, Any] = {}
             for child_name in query._children:
                 if child_name in data and data[child_name]:
                     parts[child_name] = [
@@ -84,7 +89,9 @@ class SchemaGenerator:
                         child_query.insert(row)
             return self
 
-        def delete(self):
+        model.save = save  # type: ignore[assignment]
+
+        def delete(self: BaseModel) -> BaseModel:
             pk = self.Ссылка
             if pk:
                 for child_query in query._children.values():
@@ -92,19 +99,16 @@ class SchemaGenerator:
                 query.delete(pk)
             return self
 
-        model.from_db = classmethod(from_db)
-        model.save = save
-        model.delete = delete
+        model.delete = delete  # type: ignore[assignment]
 
-        @classmethod
-        def all(cls):
+        def all(cls: type[BaseModel]) -> list[BaseModel]:
             return [cls(**r) for r in query.all()]
 
-        model.all = classmethod(all)
+        model.all = classmethod(all)  # type: ignore[assignment]
 
-        return model
+        return model  # type: ignore[return-value]
 
-    def get(self, name: str) -> type[BaseModel]:
+    def get(self, name: str) -> Optional[type[BaseModel]]:
         return self._models.get(name)
 
     def __getitem__(self, name: str) -> type[BaseModel]:

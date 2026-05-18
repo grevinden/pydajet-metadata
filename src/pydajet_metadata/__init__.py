@@ -4,6 +4,14 @@ pydajet_metadata — Прикладной слой для работы с дан
 
 from typing import Any, TypeAlias
 
+# Протоколы (typing.Protocol) для структурной типизации
+from pydajet_metadata.protocols import (
+    IColumnMapper,
+    IMetadataClient,
+    IRepository,
+    ISession,
+    IQuery,
+)
 
 # Чистые утилиты (без .NET)
 from pydajet_metadata.api import APIGenerator
@@ -21,12 +29,20 @@ DbColumnName: TypeAlias = str  # "_Description"
 RowDict: TypeAlias = dict[str, Any]  # Строка БД как словарь
 
 __all__ = [
+    # Протоколы
+    "ISession",
+    "IQuery",
+    "IColumnMapper",
+    "IMetadataClient",
+    "IRepository",
+    # Реализации
     "Repository",
     "Query",
     "Session",
     "SchemaGenerator",
     "PolarsBridge",
     "APIGenerator",
+    # Типы
     "UUIDString",
     "ConnectionString",
     "TableName",

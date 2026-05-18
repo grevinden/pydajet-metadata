@@ -1,14 +1,17 @@
 """Polars-интеграция."""
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import polars as pl
 
 from pydajet_metadata._types import sa_to_python
-from pydajet_metadata.repository import Repository
+
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import IRepository
 
 
 class PolarsBridge:
-    def __init__(self, repo: Repository):
+    def __init__(self, repo: "IRepository"):
         self._repo = repo
 
     def read(self, type_name: str, object_name: str) -> pl.DataFrame:

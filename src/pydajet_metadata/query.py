@@ -1,7 +1,9 @@
 """Построитель запросов к таблицам 1С."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import validate_call
 from sqlalchemy import delete, func, insert, select, text, update
@@ -11,6 +13,9 @@ from typing_extensions import Literal
 from pydajet_metadata._uuid import format_uuid, generate, to_1c
 from pydajet_metadata.exceptions import VersionConflictError
 from pydajet_metadata.mapper import ColumnMapper
+
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import ISession
 
 
 class Query:
@@ -22,7 +27,7 @@ class Query:
         )
 
     def __init__(
-        self, session, table_name, column_map, pk="_idrref", owner_key="_idrref"
+        self, session: "ISession", table_name: str, column_map: dict[str, str], pk: str = "_idrref", owner_key: str = "_idrref"
     ):
         self._session = session
         self._table = session.reflect_table(table_name)
@@ -30,16 +35,21 @@ class Query:
         self._mapper = ColumnMapper(self._table, column_map)
         self._pk = pk.lower()
         self._owner_key = owner_key.lower()
-        self._where = []
-        self._children = {}
+        self._where: list[Any] = []
+        self._children: dict[str, "Query"] = {}
 
-    def __getattr__(self, name: str):
+    @property
+    def _column_map(self) -> dict[str, str]:
+        """Прокси к маппингу колонок из ColumnMapper (для совместимости с IQuery)."""
+        return self._mapper._column_map
+
+    def __getattr__(self, name: str) -> Any:
         try:
             return self._mapper.get_db_column(name)
         except KeyError:
             raise AttributeError(f"Column '{name}' not found")
 
-    def where(self, *conditions):
+    def where(self, *conditions: Any) -> Query:
         self._where = list(conditions)
         return self
 
@@ -65,11 +75,12 @@ class Query:
         for c in self._where:
             stmt = stmt.where(c)
         with self._session.engine.connect() as conn:
-            return conn.execute(stmt).scalar()
+            result: Any = conn.execute(stmt).scalar()
+            return int(result) if result is not None else 0
 
     # ─── Write ────────────────────────────────────────
 
-    def insert(self, data: dict[str, Any], extra: dict[str, Any] = None) -> str:
+    def insert(self, data: dict[str, Any], extra: dict[str, Any] | None = None) -> str:
         new_uuid = generate()
         db = self._human_to_db(data)
         db[self._pk] = to_1c(new_uuid)
@@ -96,22 +107,24 @@ class Query:
             .values(**db)
         )
         with self._session.engine.begin() as conn:
-            return conn.execute(stmt).rowcount > 0
+            result = conn.execute(stmt)
+            return bool(result.rowcount > 0)
 
     def delete(self, record_id: str) -> bool:
         stmt = delete(self._table).where(self._table.c[self._pk] == to_1c(record_id))
         with self._session.engine.begin() as conn:
-            return conn.execute(stmt).rowcount > 0
+            result = conn.execute(stmt)
+            return bool(result.rowcount > 0)
 
     # ─── Internal ─────────────────────────────────────
 
-    def _row_to_dict(self, row):
+    def _row_to_dict(self, row: Any) -> dict[str, Any]:
         return self._mapper.db_to_human(row)
 
-    def _human_to_db(self, data):
+    def _human_to_db(self, data: dict[str, Any]) -> dict[str, Any]:
         return self._mapper.human_to_db(data)
 
-    def _fill_defaults(self, db: dict):
+    def _fill_defaults(self, db: dict[str, Any]) -> None:
         for col in self._table.columns:
             name = col.name.lower()
             if name not in db:
@@ -119,7 +132,7 @@ class Query:
                 if d is not None:
                     db[name] = d
 
-    def _default(self, col) -> Any:
+    def _default(self, col: Any) -> Any:
         name = col.name.lower()
         if name == "_version":
             return 0
@@ -160,7 +173,7 @@ class Query:
     def lock(
         self,
         mode: Literal["exclusive", "shared"] = "exclusive",
-        row_id: str = None,
+        row_id: str | None = None,
         nowait: bool = False,
     ) -> None:
         """
@@ -212,7 +225,7 @@ class Query:
         self,
         record_id: str,
         data: dict[str, Any],
-        expected_version: int = None,
+        expected_version: int | None = None,
     ) -> bool:
         pk_bytes = to_1c(record_id)
         db_data = self._mapper.human_to_db(data)
@@ -238,7 +251,7 @@ class Query:
 
         with self._session.engine.begin() as conn:
             result = conn.execute(stmt)
-            return result.rowcount > 0
+            return bool(result.rowcount > 0)
 
     @validate_call
     def БезопасноеИзменить(

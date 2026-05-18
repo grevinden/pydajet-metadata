@@ -1,17 +1,19 @@
 """FastAPI-генератор."""
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import Field, create_model
 
 from pydajet_metadata._types import sa_to_python
-from pydajet_metadata.repository import Repository
+
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import IRepository
 
 
 class APIGenerator:
-    def __init__(self, repo: Repository, title: str = "1С REST API"):
+    def __init__(self, repo: "IRepository", title: str = "1С REST API"):
         self._repo = repo
         self._app = FastAPI(title=title, version="1.0.0")
         self._models = {}

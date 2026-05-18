@@ -1,14 +1,17 @@
 # src/pydajet_metadata/mapper.py
 """ColumnMapper: преобразование human ↔ db ↔ python для одной таблицы."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import LargeBinary
 
 from pydajet_metadata._uuid import format_uuid, from_1c, to_1c
 
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import IColumnMapper
 
-class ColumnMapper:
+
+class ColumnMapper:  # Структурно соответствует IColumnMapper
     """
     Маппинг имён колонок между человеческим форматом и БД.
 
@@ -19,7 +22,7 @@ class ColumnMapper:
     def __repr__(self) -> str:
         return f"ColumnMapper(columns={len(self._column_map)})"
 
-    def __init__(self, table, column_map: dict[str, str]):
+    def __init__(self, table: Any, column_map: dict[str, str]) -> None:
         """
         Args:
                 table: SQLAlchemy Table
@@ -47,7 +50,7 @@ class ColumnMapper:
                 db_data[human_name.lower()] = value
         return db_data
 
-    def db_to_human(self, row) -> dict[str, Any]:
+    def db_to_human(self, row: Any) -> dict[str, Any]:
         """Преобразует строку БД → {human_name: value}."""
         d = {}
         for col in self._table.columns:
@@ -60,7 +63,7 @@ class ColumnMapper:
             d[human_name] = val
         return d
 
-    def get_db_column(self, human_name: str):
+    def get_db_column(self, human_name: str) -> Any:
         """Возвращает SQLAlchemy Column по человеческому имени."""
         if human_name in self._column_map:
             db_name = self._column_map[human_name].lower()

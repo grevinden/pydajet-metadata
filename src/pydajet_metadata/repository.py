@@ -1,16 +1,41 @@
 """Репозиторий объектов 1С."""
 
+from typing import TYPE_CHECKING, Any
+
 from pydajet_metadata.query import Query
 from pydajet_metadata.session import Session
 
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import IMetadataClient, IRepository, ISession
 
-class Repository:
-    def __init__(self, connection_string: str, data_source: str = "postgresql"):
+
+class Repository:  # Структурно соответствует IRepository
+    def __init__(
+        self,
+        connection_string: str | None = None,
+        data_source: str = "postgresql",
+        *,
+        client: "IMetadataClient | None" = None,
+        session: "ISession | None" = None,
+    ):
         # Ленивый импорт — только когда создаётся экземпляр
         from pydajet.client import MetadataClient
 
-        self._client = MetadataClient(connection_string, data_source)
-        self._session = Session(connection_string)
+        # Поддержка DI через протоколы (приоритет) или создание внутри (обратная совместимость)
+        if client is not None:
+            self._client = client
+        else:
+            if not connection_string:
+                raise ValueError("connection_string is required when client is not provided")
+            self._client = MetadataClient(connection_string, data_source)
+
+        if session is not None:
+            self._session = session
+        else:
+            if not connection_string:
+                raise ValueError("connection_string is required when session is not provided")
+            self._session = Session(connection_string)
+
         self._queries: dict[str, dict[str, Query]] = {}
 
         # Сохраняем идентификатор версии метаданных
@@ -84,7 +109,7 @@ class Repository:
         raise AttributeError(f"Type '{name}' not found")
 
     @property
-    def session(self):
+    def session(self) -> "ISession":
         return self._session
 
     def close(self):

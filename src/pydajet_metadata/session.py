@@ -1,14 +1,21 @@
 """Подключение к БД и управление транзакциями."""
 
+from __future__ import annotations
+
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, Iterator, List
 
 from sqlalchemy import Column, MetaData, Table, create_engine, inspect
 from sqlalchemy.engine import Engine
 
 from pydajet_metadata._types import pg_to_sqlalchemy
 
+if TYPE_CHECKING:
+    from pydajet_metadata.protocols import ISession
 
-class Session:
+
+class Session:  # Структурно соответствует ISession
+    """Реализация ISession через SQLAlchemy Engine."""
     def __repr__(self) -> str:
         return f"Session(engine={self._engine.url.database!r})"
 
@@ -37,7 +44,7 @@ class Session:
         key = table_name.lower()
         if key not in self._cache:
             cols = self._inspector.get_columns(key)
-            columns = [
+            columns: List[Column[Any]] = [
                 Column(c["name"], pg_to_sqlalchemy(str(c["type"]))) for c in cols
             ]
             self._cache[key] = Table(key, MetaData(), *columns)
@@ -50,7 +57,7 @@ class Session:
         return list(self.reflect_table(table_name).columns.keys())[0]
 
     @contextmanager
-    def transaction(self):
+    def transaction(self) -> Iterator[Session]:
         """
         Контекстный менеджер транзакции.
 
@@ -87,7 +94,7 @@ class Session:
                 # conn закрывается автоматически при выходе из with
 
     @contextmanager
-    def savepoint(self):
+    def savepoint(self) -> Iterator[Session]:
         """
         Контекстный менеджер savepoint для вложенных транзакций.
 
@@ -111,5 +118,5 @@ class Session:
             trans.rollback()
             raise
 
-    def close(self):
+    def close(self) -> None:
         self._engine.dispose()
