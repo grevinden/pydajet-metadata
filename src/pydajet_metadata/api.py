@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any, Optional
 
-import uvicorn
-from fastapi import FastAPI, HTTPException
 from pydantic import Field, create_model
 from pydantic.main import BaseModel
 
@@ -19,6 +17,8 @@ class APIGenerator:
 
     def __init__(self, repo: "IRepository", title: str = "1С REST API"):
         """Инициализирует генератор API, принимая репозиторий с метаданными."""
+        from fastapi import FastAPI
+
         self._repo = repo
         self._app = FastAPI(title=title, version="1.0.0")
         self._models: dict[str, dict[str, type[BaseModel]]] = {}
@@ -85,6 +85,8 @@ class APIGenerator:
             type_name, obj_name = key.split("/")
             prefix = f"/{type_name}/{obj_name}"
 
+            from fastapi import HTTPException
+
             @self._app.get(
                 f"{prefix}",
                 response_model=list[models["response"]],
@@ -145,4 +147,12 @@ class APIGenerator:
 
     def run(self, host: str = "0.0.0.0", port: int = 8000) -> None:
         """Запускает FastAPI-сервер на указанном хосте и порту."""
+        try:
+            import uvicorn
+        except ImportError as exc:
+            raise ImportError(
+                'uvicorn is required to run the generated FastAPI app. '
+                'Install it with `uv add --dev uvicorn` or add it to your environment.'
+            ) from exc
+
         uvicorn.run(self._app, host=host, port=port)

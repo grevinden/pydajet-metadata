@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from pydantic import validate_call
 from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.types import Boolean, DateTime, Float, Integer, LargeBinary, String
-from typing_extensions import Literal
 
 from pydajet_metadata._uuid import format_uuid, generate, to_1c
 from pydajet_metadata.exceptions import VersionConflictError

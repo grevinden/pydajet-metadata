@@ -10,6 +10,7 @@
 - [Быстрый старт](#быстрый-старт)
 - [Модуль `pydajet`](#модуль-pydajet)
 - [Модуль `pydajet_metadata`](#модуль-pydajet_metadata)
+- [Асинхронный режим](#асинхронный-режим)
 - [Протоколы](#протоколы)
 - [API контракт](#api-контракт)
 - [Тестирование](#тестирование)
@@ -43,8 +44,11 @@ src/
     ├── _uuid.py
     ├── _types.py
     ├── session.py
+    ├── async_session.py
     ├── query.py
+    ├── async_query.py
     ├── repository.py
+    ├── async_repository.py
     ├── schema.py
     ├── bridge.py
     ├── api.py
@@ -154,6 +158,31 @@ query = repo.query('Справочники', 'ирАлгоритмы')
 print(query.count())
 print(query.where(query.Наименование == 'telegram').all())
 ```
+
+### Асинхронный режим
+
+`pydajet_metadata` теперь поддерживает параллельную структуру async-интерфейсов, оставляя существующий sync API неизменным.
+
+```python
+from pydajet_metadata import AsyncRepository
+
+repo = AsyncRepository(
+    connection_string="Host=localhost;Port=5433;Database=MyBase;Username=postgres;Password=secret;"
+)
+
+async def run():
+    query = await repo.query('Справочники', 'Контрагенты')
+    rows = await query.all()
+    print(rows)
+    await repo.close()
+```
+
+Дополнительно доступны:
+
+- `AsyncSession` — async-обёртка над `Session`
+- `AsyncQuery` — async-обёртка над `Query`
+- `AsyncRepository` — async-обёртка над `Repository`
+- `IAsyncSession`, `IAsyncQuery`, `IAsyncRepository`, `IAsyncMetadataClient` — асинхронные контракты
 
 ### SchemaGenerator
 

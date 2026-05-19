@@ -8,9 +8,10 @@ PEP 544: Protocols позволяют использовать duck-typing со 
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import (
     Any,
+    AsyncIterator,
     Dict,
     Iterator,
     List,
@@ -18,10 +19,9 @@ from typing import (
     Protocol,
     Sequence,
     Tuple,
+    Literal,
     runtime_checkable,
 )
-
-from typing_extensions import Literal
 
 
 # ─── Type Aliases ────────────────────────────────────────────────────────────
@@ -180,6 +180,153 @@ class IQuery(Protocol):
 
     def ПолучитьВерсию(self, record_id: UUIDString) -> int:
         """Возвращает текущую версию объекта (_Version)."""
+        ...
+
+
+@runtime_checkable
+class IAsyncQuery(Protocol):
+    """Асинхронный интерфейс построителя запросов к таблицам 1С."""
+
+    @property
+    def _table(self) -> Any:
+        ...
+
+    @property
+    def _pk(self) -> str:
+        ...
+
+    @property
+    def _owner_key(self) -> str:
+        ...
+
+    @property
+    def _children(self) -> Dict[str, "IAsyncQuery"]:
+        ...
+
+    @property
+    def _column_map(self) -> ColumnMap:
+        ...
+
+    async def all(self) -> List[RowDict]:
+        ...
+
+    async def first(self) -> Optional[RowDict]:
+        ...
+
+    async def count(self) -> int:
+        ...
+
+    def where(self, *conditions: Any) -> "IAsyncQuery":
+        ...
+
+    async def insert(self, data: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> UUIDString:
+        ...
+
+    async def update(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+        ...
+
+    async def delete(self, record_id: UUIDString) -> bool:
+        ...
+
+    async def lock(
+        self,
+        mode: Literal["exclusive", "shared"] = "exclusive",
+        row_id: Optional[UUIDString] = None,
+        nowait: bool = False,
+    ) -> None:
+        ...
+
+    async def Изменить(
+        self,
+        record_id: UUIDString,
+        data: Dict[str, Any],
+        expected_version: Optional[int] = None,
+    ) -> bool:
+        ...
+
+    async def БезопасноеИзменить(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+        ...
+
+    async def ПолучитьВерсию(self, record_id: UUIDString) -> int:
+        ...
+
+
+@runtime_checkable
+class IAsyncSession(Protocol):
+    """Асинхронный интерфейс подключения к БД и управления транзакциями."""
+
+    @property
+    def engine(self) -> Any:
+        ...
+
+    async def reflect_table(self, table_name: str) -> Any:
+        ...
+
+    async def get_pk(self, table_name: str) -> str:
+        ...
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator["IAsyncSession"]:
+        ...
+
+    @asynccontextmanager
+    async def savepoint(self) -> AsyncIterator["IAsyncSession"]:
+        ...
+
+    async def close(self) -> None:
+        ...
+
+
+@runtime_checkable
+class IAsyncRepository(Protocol):
+    """Асинхронный интерфейс репозитория объектов 1С."""
+
+    @property
+    def session(self) -> IAsyncSession:
+        ...
+
+    @property
+    def root_guid(self) -> str:
+        ...
+
+    @property
+    def metadata_version(self) -> int:
+        ...
+
+    async def types(self) -> List[str]:
+        ...
+
+    async def objects(self, type_name: str) -> List[str]:
+        ...
+
+    async def query(self, type_name: str, object_name: str) -> IAsyncQuery:
+        ...
+
+    async def check_metadata_actual(self) -> None:
+        ...
+
+    async def refresh_metadata(self) -> None:
+        ...
+
+    async def close(self) -> None:
+        ...
+
+    def __getattr__(self, name: str) -> Any:
+        ...
+
+
+@runtime_checkable
+class IAsyncMetadataClient(Protocol):
+    """Асинхронный интерфейс клиента метаданных 1С."""
+
+    @property
+    def platform_version(self) -> int:
+        ...
+
+    async def list_types(self) -> List[str]:
+        ...
+
+    async def list_objects(self, type_name: str) -> List[Dict[str, Any]]:
         ...
 
 

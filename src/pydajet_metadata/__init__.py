@@ -6,6 +6,10 @@ from typing import Any, TypeAlias
 
 # Протоколы (typing.Protocol) для структурной типизации
 from pydajet_metadata.protocols import (
+    IAsyncQuery,
+    IAsyncRepository,
+    IAsyncSession,
+    IAsyncMetadataClient,
     IColumnMapper,
     IMetadataClient,
     IRepository,
@@ -15,6 +19,9 @@ from pydajet_metadata.protocols import (
 
 # Чистые утилиты (без .NET)
 from pydajet_metadata.api import APIGenerator
+from pydajet_metadata.async_query import AsyncQuery
+from pydajet_metadata.async_repository import AsyncRepository
+from pydajet_metadata.async_session import AsyncSession
 from pydajet_metadata.bridge import PolarsBridge
 from pydajet_metadata.query import Query
 from pydajet_metadata.repository import Repository
@@ -32,13 +39,20 @@ __all__ = [
     # Протоколы
     "ISession",
     "IQuery",
+    "IAsyncQuery",
+    "IAsyncSession",
+    "IAsyncRepository",
+    "IAsyncMetadataClient",
     "IColumnMapper",
     "IMetadataClient",
     "IRepository",
     # Реализации
     "Repository",
+    "AsyncRepository",
     "Query",
+    "AsyncQuery",
     "Session",
+    "AsyncSession",
     "SchemaGenerator",
     "PolarsBridge",
     "APIGenerator",
