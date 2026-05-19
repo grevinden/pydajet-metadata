@@ -68,7 +68,7 @@ class TestRepositoryInit:
                 repo = Repository(connection_string="test://db", data_source="postgresql")
                 
                 mock_client_cls.assert_called_once_with("test://db", "postgresql")
-                mock_session_cls.assert_called_once_with("test://db")
+                mock_session_cls.assert_called_once_with("test://db", "postgresql")
 
     def test_init_stores_platform_version(self, mock_metadata_client, mock_session):
         """Проверка сохранения версии платформы."""

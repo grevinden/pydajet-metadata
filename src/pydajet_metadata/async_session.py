@@ -11,8 +11,8 @@ from pydajet_metadata.session import Session
 class AsyncSession(IAsyncSession):
     """Асинхронная оболочка для синхронного Session."""
 
-    def __init__(self, connection_string: str):
-        self._inner = Session(connection_string)
+    def __init__(self, connection_string: str, data_source: str = "postgresql"):
+        self._inner = Session(connection_string, data_source)
 
     @classmethod
     def from_session(cls, session: Session) -> "AsyncSession":

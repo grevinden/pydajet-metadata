@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Iterator, List
+from urllib.parse import quote_plus
 
 from sqlalchemy import Column, MetaData, Table, create_engine, inspect
 from sqlalchemy.engine import Engine
@@ -19,22 +20,55 @@ class Session:  # Структурно соответствует ISession
     def __repr__(self) -> str:
         return f"Session(engine={self._engine.url.database!r})"
 
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, data_source: str = "postgresql"):
         params = self._parse_cs(connection_string)
-        url = (
-            f"postgresql://{params['username']}:{params['password']}"
-            f"@{params['host']}:{params.get('port', 5432)}/{params['database']}"
-        )
+        url = self._build_engine_url(params, data_source.lower())
         self._engine = create_engine(url)
         self._inspector = inspect(self._engine)
         self._cache: dict[str, Table] = {}
 
     @staticmethod
-    def _parse_cs(cs: str) -> dict[str, str]:
-        return dict(
-            (k.strip().lower(), v.strip())
-            for k, v in (p.split("=", 1) for p in cs.split(";") if "=" in p)
+    def _build_engine_url(params: dict[str, str], data_source: str) -> str:
+        if data_source in ("postgresql", "postgres"):
+            return (
+                f"postgresql://{params['username']}:{params['password']}"
+                f"@{params['host']}:{params.get('port', 5432)}/{params['database']}"
+            )
+
+        if data_source in ("sqlserver", "mssql"):
+            driver = params.get("driver", "ODBC Driver 18 for SQL Server")
+            port = params.get("port", "1433")
+            host = params.get("host") or params.get("server")
+            if not host:
+                raise ValueError("Server/Host is required for SQL Server connection strings")
+
+            dsn = (
+                f"DRIVER={driver};SERVER={host},{port};DATABASE={params['database']};"
+            )
+            if params.get("trusted_connection", "").lower() in ("yes", "true", "sspi"):
+                dsn += "Trusted_Connection=Yes;"
+            else:
+                dsn += f"UID={params['username']};PWD={params['password']};"
+
+            return f"mssql+pyodbc:///?odbc_connect={quote_plus(dsn)}"
+
+        raise ValueError(
+            "Unknown data_source. Use 'postgresql' or 'sqlserver'."
         )
+
+    @staticmethod
+    def _parse_cs(cs: str) -> dict[str, str]:
+        result = {
+            k.strip().lower(): v.strip()
+            for k, v in (p.split("=", 1) for p in cs.split(";") if "=" in p)
+        }
+        if "server" in result and "host" not in result:
+            result["host"] = result["server"]
+        if "uid" in result and "username" not in result:
+            result["username"] = result["uid"]
+        if "pwd" in result and "password" not in result:
+            result["password"] = result["pwd"]
+        return result
 
     @property
     def engine(self) -> Engine:

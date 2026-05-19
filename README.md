@@ -147,6 +147,12 @@ repo = Repository(client=client, session=session)
 
 print(repo.types())
 print(repo.objects('Справочники'))
+
+repo_sqlserver = Repository(
+    "Server=localhost;Database=TestDB;UID=test;PWD=test;",
+    data_source="sqlserver",
+)
+print(repo_sqlserver.types())
 ```
 
 ### Query

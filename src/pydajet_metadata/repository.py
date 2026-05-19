@@ -52,7 +52,7 @@ class Repository:  # Структурно соответствует IRepository
         else:
             if not connection_string:
                 raise ValueError("connection_string is required when session is not provided")
-            self._session = Session(connection_string)
+            self._session = Session(connection_string, data_source)
 
         self._queries: dict[str, dict[str, Query]] = {}
 
