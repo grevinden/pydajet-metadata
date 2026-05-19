@@ -1,30 +1,38 @@
 # PyDaJet Metadata
 
-**Python-клиент для 1С:Предприятие 8** — чтение, запись, анализ метаданных и данных напрямую из PostgreSQL и MS SQL Server.
+**Python-клиент для 1С:Предприятие 8** — чтение, запись и анализ метаданных и данных напрямую из PostgreSQL и MS SQL Server.
 
-## 📌 О проекте
+## 📋 Содержание
 
-`pydajet-metadata` состоит из двух слоёв:
+- [О проекте](#о-проекте)
+- [Структура](#структура)
+- [Установка](#установка)
+- [Быстрый старт](#быстрый-старт)
+- [Модуль `pydajet`](#модуль-pydajet)
+- [Модуль `pydajet_metadata`](#модуль-pydajet_metadata)
+- [Протоколы](#протоколы)
+- [Тестирование](#тестирование)
+- [Текущее состояние](#текущее-состояние)
+- [Полезные ссылки](#полезные-ссылки)
 
-- `pydajet` — низкоуровневый доступ к DaJet Metadata через .NET Runtime
-- `pydajet_metadata` — высокоуровневый Python API для работы с данными, динамическими моделями и REST
+---
 
-Главная идея: разделить метаданные и данные, сохранить обратную совместимость и сделать `pydajet_metadata` легко тестируемым.
+## О проекте
 
-## 🚀 Ключевые преимущества
+Проект разделён на два независимых слоя:
 
-- **Protocol-based architecture**: зависимости инвертированы через `typing.Protocol`
-- **Lazy .NET loading**: `.NET Runtime` подключается только при создании `MetadataClient`
-- **Dynamic Pydantic models**: `SchemaGenerator` строит модели на основе метаданных 1С
-- **FastAPI генерация**: `APIGenerator` создаёт REST API из репозитория
-- **DataFrame интеграция**: `PolarsBridge` работает с `polars.DataFrame`
-- **Высокое покрытие тестами**: полный набор тестов и CI-ready конфигурация
+- `pydajet` — низкоуровневый доступ к DaJet Metadata через .NET Runtime и `pythonnet`
+- `pydajet_metadata` — высокоуровневый Python API для работы с данными, динамическими моделями, REST и аналитикой
 
-## 📂 Структура проекта
+Основная цель: сохранить обратную совместимость, разнести метаданные и данные по слоям и сделать прикладную логику легко тестируемой.
+
+---
+
+## Структура
 
 ```
 src/
-├── pydajet/                  # Слой метаданных (.NET / pythonnet)
+├── pydajet/                  # Слой метаданных (.NET, pythonnet)
 │   ├── __init__.py
 │   ├── _platform.py
 │   └── client.py
@@ -37,10 +45,13 @@ src/
     ├── repository.py
     ├── schema.py
     ├── bridge.py
-    └── api.py
+    ├── api.py
+    └── protocols.py
 ```
 
-## 📦 Установка
+---
+
+## Установка
 
 ### Требования
 
@@ -55,9 +66,9 @@ uv add pydajet-metadata
 uv add --dev pytest pytest-asyncio pytest-cov pytest-mock hypothesis httpx mypy
 ```
 
-## ⚙️ Быстрый старт
+---
 
-### Подключение к базе
+## Быстрый старт
 
 ```python
 from pydajet_metadata import Repository
@@ -65,44 +76,19 @@ from pydajet_metadata import Repository
 repo = Repository(
     "Host=localhost;Port=5433;Database=MyBase;Username=postgres;Password=secret;"
 )
-```
 
-### Построение запроса
-
-```python
 query = repo.query('Справочники', 'Контрагенты')
 rows = query.all()
 print(rows)
 ```
 
-## 🧩 Архитектура
+---
 
-### Два независимых слоя
+## Модуль `pydajet`
 
-- `pydajet` — работает с DaJet Metadata и .NET Runtime
-- `pydajet_metadata` — работает с данными, моделями и REST API
+`pydajet` обеспечивает низкоуровневый доступ к метаданным 1С через DaJet Metadata.
 
-### Protocol-based Dependency Injection
-
-`pydajet_metadata` опирается на протоколы вместо прямых классов.
-Это позволяет использовать любые реализации, не привязываясь к конкретному клиенту или сессии.
-
-```python
-from pydajet_metadata import Repository
-
-repo = Repository(
-    client=FakeMetadataClient(),
-    session=FakeSession(),
-)
-```
-
-## 🔧 Основные компоненты
-
-### `pydajet`
-
-#### `MetadataClient`
-
-Низкоуровневый клиент для чтения метаданных из 1С через DaJet Metadata.
+### MetadataClient
 
 ```python
 from pydajet import MetadataClient
@@ -113,9 +99,20 @@ client = MetadataClient(
 print(client.list_types())
 ```
 
-#### UUID utilities
+#### Основные методы
 
-Конвертация между стандартным UUID и форматом 1С.
+- `list_types()` — возвращает список типов метаданных (`Справочники`, `Документы`, ...)
+- `list_objects(type_name)` — возвращает описания объектов выбранного типа, таблиц, реквизитов и табличных частей
+
+#### Свойства
+
+- `config_name` — имя конфигурации 1С
+- `config_alias` — алиас конфигурации
+- `platform_version` — версия платформы 1С
+
+### UUID utilities
+
+Утилиты для конвертации UUID между стандартным форматом и форматом 1С.
 
 ```python
 from pydajet import to_1c, format_uuid
@@ -124,11 +121,15 @@ uuid_bytes = to_1c("5000289c-66b6-fadf-11f1-4e880e761abe")
 print(format_uuid(uuid_bytes))
 ```
 
-### `pydajet_metadata`
+---
 
-#### `Repository`
+## Модуль `pydajet_metadata`
 
-Объединяет метаданные и SQLAlchemy-сессию, предоставляя простой API для доступа к объектам 1С.
+Этот слой работает с данными, SQLAlchemy, динамическими Pydantic-моделями, FastAPI и Polars.
+
+### Repository
+
+`Repository` объединяет метаданные и SQLAlchemy-сессию.
 
 ```python
 from pydajet import MetadataClient
@@ -142,9 +143,9 @@ print(repo.types())
 print(repo.objects('Справочники'))
 ```
 
-#### `Query`
+### Query
 
-CRUD-построитель для объекта 1С.
+Построитель CRUD-запросов для объекта 1С.
 
 ```python
 query = repo.query('Справочники', 'ирАлгоритмы')
@@ -152,9 +153,9 @@ print(query.count())
 print(query.where(query.Наименование == 'telegram').all())
 ```
 
-#### `SchemaGenerator`
+### SchemaGenerator
 
-Генерирует Pydantic-модель на основе структуры объекта 1С.
+Генерирует Pydantic-модели на основе структуры объекта.
 
 ```python
 from pydajet_metadata import SchemaGenerator
@@ -164,9 +165,9 @@ model = gen['Справочники.Контрагенты']
 instance = model.from_db('9c280050-b666-dffa-11f1-4e880e761abe')
 ```
 
-#### `APIGenerator`
+### APIGenerator
 
-Создаёт FastAPI-приложение из репозитория.
+Генерирует REST API на FastAPI из репозитория.
 
 ```python
 from pydajet_metadata import APIGenerator
@@ -175,9 +176,9 @@ app = APIGenerator(repo).generate()
 app.run()
 ```
 
-#### `PolarsBridge`
+### PolarsBridge
 
-Интеграция `polars` для чтения и записи данных.
+Интеграция с `polars` для чтения и записи данных.
 
 ```python
 from pydajet_metadata import PolarsBridge
@@ -187,19 +188,21 @@ df = bridge.read('Справочники', 'Контрагенты')
 bridge.write(df, 'Справочники', 'Контрагенты')
 ```
 
-## 🧠 Протоколы
+---
 
-Протоколы описывают необходимые методы и свойства, не навязывая конкретную реализацию.
+## Протоколы
+
+`pydajet_metadata` работает через `typing.Protocol`, чтобы отделить контракт от реализации.
 
 ### Основные интерфейсы
 
 - `IMetadataClient` — контракт клиента метаданных
-- `ISession` — контракт управления подключением и транзакциями
+- `ISession` — контракт управления соединением и транзакциями
 - `IQuery` — контракт CRUD-запросов для объекта
 - `IColumnMapper` — маппинг human ↔ db
-- `IRepository` — репозиторий для прикладного слоя
+- `IRepository` — контракт репозитория
 
-### Пример использования протоколов в тестах
+### Пример использования протоколов
 
 ```python
 from unittest.mock import Mock
@@ -225,37 +228,35 @@ mock_session.reflect_table.return_value = ...
 repo = Repository(client=mock_client, session=mock_session)
 ```
 
-## 🧪 Тестирование
+---
 
-Запуск всех тестов:
+## Тестирование
 
 ```bash
 uv run pytest tests/ -q
-```
-
-Покрытие и статический анализ:
-
-```bash
 uv run mypy src/pydajet_metadata --strict
 uv run pytest tests/ --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=term-missing
 ```
 
-## ✅ Проверка
+---
 
-На текущий момент весь тестовый пакет проходит успешно: `242 passed, 2 skipped`.
+## Текущее состояние
 
-## 📌 Что исправлено в этой версии
+- `242 passed, 2 skipped`
+- `96%` покрытие по `src/pydajet` и `src/pydajet_metadata`
+
+## Что исправлено
 
 - Исправлена логика `Query._pk_condition` для случая отсутствующего PK-столбца
 - Повышена изоляция тестов импорта `pydajet` без .NET Runtime
-- Объединена и обновлена документация в `README.md`
+- Документация объединена и централизована в `README.md`
 
 ---
 
 ## Полезные ссылки
 
-- `pyproject.toml` — описание зависимостей и конфигурации
-- `tests/` — все тесты и фикстуры
-- `src/pydajet_metadata/protocols.py` — контракты для DI
-- `src/pydajet_metadata/repository.py` — центральный репозиторий
-- `src/pydajet_metadata/query.py` — реализация CRUD и блокировок
+- `pyproject.toml` — зависимости и сборка
+- `tests/` — тесты и фикстуры
+- `src/pydajet_metadata/protocols.py` — контракты DI
+- `src/pydajet_metadata/repository.py` — основной репозиторий
+- `src/pydajet_metadata/query.py` — CRUD и блокировки
