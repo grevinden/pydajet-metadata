@@ -6,6 +6,8 @@ import pytest
 from sqlalchemy import Column, MetaData, Table
 from sqlalchemy.types import Boolean, DateTime, Integer, LargeBinary, String
 
+from pydajet_metadata._uuid import to_1c
+from pydajet_metadata.exceptions import VersionConflictError
 from pydajet_metadata.query import Query
 
 
@@ -229,3 +231,38 @@ class TestQueryLocks:
             call_args = mock_conn.execute.call_args[0][0]
             sql_str = str(call_args)
             assert "NOWAIT" in sql_str
+
+    def test_pk_condition_falls_back_to_text(self, mock_session, mock_table, sample_column_map):
+        mock_session.reflect_table.return_value = mock_table
+        query = Query(mock_session, "_reference53", sample_column_map, pk="_missing")
+        condition = query._pk_condition("9c280050-b666-dffa-11f1-4e880e761abe")
+        assert "_missing" in str(condition)
+
+    def test_versioned_update_and_conflict(self, query):
+        query._mapper.human_to_db = MagicMock(return_value={"_description": "Обновлённый"})
+        query._get_current_version = MagicMock(return_value=1)
+        query._session.engine.begin.return_value.__enter__.return_value.execute.return_value.rowcount = 1
+
+        assert query.Изменить(
+            "9c280050-b666-dffa-11f1-4e880e761abe",
+            {"Наименование": "Обновлённый"},
+            expected_version=1,
+        )
+
+        with pytest.raises(VersionConflictError):
+            query.Изменить(
+                "9c280050-b666-dffa-11f1-4e880e761abe",
+                {"Наименование": "Обновлённый"},
+                expected_version=2,
+            )
+
+    def test_safe_update_and_get_version(self, query):
+        query._mapper.human_to_db = MagicMock(return_value={"_description": "Обновлённый"})
+        query._get_current_version = MagicMock(return_value=2)
+        query._session.engine.begin.return_value.__enter__.return_value.execute.return_value.rowcount = 1
+
+        assert query.БезопасноеИзменить(
+            "9c280050-b666-dffa-11f1-4e880e761abe",
+            {"Наименование": "Обновлённый"},
+        )
+        assert query.ПолучитьВерсию("9c280050-b666-dffa-11f1-4e880e761abe") == 2

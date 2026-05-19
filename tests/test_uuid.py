@@ -4,7 +4,19 @@ from uuid import UUID
 from hypothesis import given, strategies as st
 
 # Импортируем напрямую, минуя pydajet/__init__.py (который тянет .NET)
-from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
+from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid, is_valid_hex, ensure_1c_format
+
+
+def test_pydajet_exposes_uuid_helpers():
+    try:
+        from pydajet import format_uuid as pydajet_format_uuid
+    except Exception:
+        pytest.skip("pydajet import requires .NET runtime")
+
+    if hasattr(pydajet_format_uuid, 'return_value'):
+        pytest.skip("pydajet is mocked in the current test environment")
+
+    assert pydajet_format_uuid("5000289c66b6fadf11f14e880e761abe") == "5000289c-66b6-fadf-11f1-4e880e761abe"
 
 
 class TestUUIDConversion:
@@ -48,6 +60,16 @@ class TestUUIDConversion:
 
 	def test_format_uuid_from_bytes ( self , sample_uuid_bytes , sample_uuid_formatted ) :
 		assert format_uuid ( sample_uuid_bytes ) == sample_uuid_formatted
+
+	def test_is_valid_hex_and_ensure_1c_format ( self , sample_uuid , sample_uuid_hex ) :
+		assert is_valid_hex(sample_uuid_hex)
+		assert not is_valid_hex('invalid-uuid')
+		bytes_1c = ensure_1c_format(sample_uuid_hex)
+		assert isinstance(bytes_1c, bytes)
+		assert len(bytes_1c) == 16
+
+		with pytest.raises(ValueError):
+			ensure_1c_format('short')
 
 	def test_from_1c_invalid_length ( self ) :
 		with pytest.raises ( ValueError ) :

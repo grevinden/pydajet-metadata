@@ -1,55 +1,59 @@
 # PyDaJet Metadata
 
-**Python-клиент для 1С:Предприятие 8** — чтение, запись, анализ метаданных и данных напрямую из PostgreSQL и MS SQL Server.
+**Python-клиент для 1С:Предприятие 8** — чтение, запись и анализ метаданных и данных напрямую из PostgreSQL и MS SQL Server.
 
 ## 📋 Содержание
 
-1. [Архитектура проекта](#архитектура-проекта)
-2. [Установка](#установка)
-3. [Подключение к базе](#подключение-к-базе)
-4. [Слой метаданных (pydajet)](#слой-метаданных-pydajet)
-5. [Слой данных (pydajet_metadata)](#слой-данных-pydajet_metadata)
-6. [ORM-интерфейс (Repository)](#orm-интерфейс-repository)
-7. [Генератор API (FastAPI)](#генератор-api-fastapi)
-8. [Polars-интеграция](#polars-интеграция)
-9. [Динамические Pydantic-модели](#динамические-pydantic-модели)
-10. [Транзакции и блокировки](#транзакции-и-блокировки)
-11. [UUID-конвертация](#uuid-конвертация)
-12. [Тестирование](#тестирование)
+- [О проекте](#о-проекте)
+- [Структура](#структура)
+- [Установка](#установка)
+- [Быстрый старт](#быстрый-старт)
+- [Модуль `pydajet`](#модуль-pydajet)
+- [Модуль `pydajet_metadata`](#модуль-pydajet_metadata)
+- [Асинхронный режим](#асинхронный-режим)
+- [Протоколы](#протоколы)
+- [API контракт](#api-контракт)
+- [Тестирование](#тестирование)
+- [Текущее состояние](#текущее-состояние)
+- [Миграция](#миграция)
+- [Полезные ссылки](#полезные-ссылки)
 
 ---
 
-## Архитектура проекта
+## О проекте
 
 Проект разделён на два независимых слоя:
 
+- `pydajet` — низкоуровневый доступ к DaJet Metadata через .NET Runtime и `pythonnet`
+- `pydajet_metadata` — прикладной Python API для работы с данными, динамическими моделями, REST и аналитикой
+
+Основная цель: разнести метаданные и данные по слоям, сохранить обратную совместимость и сделать прикладную логику легко тестируемой, в том числе через мокируемые протоколы.
+
+---
+
+## Структура
+
 ```
 src/
-├── pydajet/                          # Слой метаданных (взаимодействие с .NET)
-│   ├── __init__.py                   # Инициализация .NET Runtime
-│   ├── _platform.py                  # Поиск бинарников для текущей ОС
-│   └── client.py                     # Низкоуровневый доступ к метаданным 1С
-│
-└── pydajet_metadata/                 # Прикладной слой (работа с данными)
-    ├── __init__.py                   # Реэкспорт основных классов
-    ├── _uuid.py                      # Конвертация UUID 1С ↔ стандартный
-    ├── _types.py                     # Маппинг типов PostgreSQL → SQLAlchemy → Python
-    ├── session.py                    # Подключение к БД и транзакции
-    ├── query.py                      # Query builder (чтение/запись/блокировки)
-    ├── repository.py                 # Репозиторий (объединяет метаданные + запросы)
-    ├── schema.py                     # Генератор динамических Pydantic-моделей
-    ├── bridge.py                     # Polars-интеграция
-    └── api.py                        # FastAPI/OpenAPI-генератор
+├── pydajet/                  # Слой метаданных (.NET, pythonnet)
+│   ├── __init__.py
+│   ├── _platform.py
+│   └── client.py
+└── pydajet_metadata/         # Прикладной слой (SQLAlchemy, Pydantic, FastAPI, Polars)
+    ├── __init__.py
+    ├── _uuid.py
+    ├── _types.py
+    ├── session.py
+    ├── async_session.py
+    ├── query.py
+    ├── async_query.py
+    ├── repository.py
+    ├── async_repository.py
+    ├── schema.py
+    ├── bridge.py
+    ├── api.py
+    └── protocols.py
 ```
-
-### Принцип разделения
-
-| Слой | Назначение | Зависимости |
-|------|-----------|-------------|
-| `pydajet` | Низкоуровневый доступ к API DaJet Metadata через .NET Runtime | .NET Runtime, pythonnet |
-| `pydajet_metadata` | Высокоуровневый интерфейс для работы с данными | SQLAlchemy, Polars, FastAPI |
-
-Слой `pydajet_metadata` **не требует .NET Runtime** для импорта — он загружается лениво только при создании экземпляра `MetadataClient`. Это позволяет запускать тесты и использовать вспомогательные функции без установленного .NET.
 
 ---
 
@@ -57,514 +61,306 @@ src/
 
 ### Требования
 
-| Компонент | Версия |
-|-----------|--------|
-| Python | ≥ 3.13 |
-| .NET Runtime | 10.0 (для работы с метаданными) |
-| PostgreSQL | ≥ 12 (для работы с данными) |
+- Python ≥ 3.13
+- .NET Runtime 10.0 для работы `pydajet`
+- PostgreSQL ≥ 12 для работы с хранилищем данных
 
-### Установка пакета
+### Установка зависимостей
 
 ```bash
-# Основные зависимости
 uv add pydajet-metadata
-
-# Для разработки (тесты, линтеры)
-uv add --dev pytest pytest-asyncio pytest-cov pytest-mock hypothesis httpx
-```
-
-### Структура установленного пакета
-
-```
-site-packages/
-├── pydajet/                    # Слой метаданных
-│   ├── __init__.py
-│   ├── _platform.py
-│   └── client.py
-├── pydajet_metadata/           # Прикладной слой
-│   ├── __init__.py
-│   ├── _uuid.py
-│   ├── _types.py
-│   ├── session.py
-│   ├── query.py
-│   ├── repository.py
-│   ├── schema.py
-│   ├── bridge.py
-│   ├── api.py
-│   └── bin/                    # Бинарники .NET (автоматически загружаются)
-│       ├── win-x64/
-│       ├── linux-x64/
-│       └── ...
-└── dajet/                      # Алиас для удобного импорта
-    └── __init__.py
+uv add --dev pytest pytest-asyncio pytest-cov pytest-mock hypothesis httpx mypy
 ```
 
 ---
 
-## Подключение к базе
-
-### Строка подключения
-
-Формат строки подключения совместим с 1С:
-
-```
-Host=localhost;Port=5433;Database=MyBase;Username=postgres;Password=secret;
-```
-
-### Создание репозитория
+## Быстрый старт
 
 ```python
 from pydajet_metadata import Repository
 
-# PostgreSQL
 repo = Repository(
-    "Host=localhost;Port=5433;Database=vbncvbncv;Username=vbnvbn;Password=cvbbc;"
+    "Host=localhost;Port=5433;Database=MyBase;Username=postgres;Password=secret;"
 )
 
-# MS SQL Server
-repo = Repository(
-    "Server=localhost;Database=MyBase;User Id=sa;Password=secret;",
-    data_source="sqlserver"
-)
-```
-
-### Просмотр структуры базы
-
-```python
-# Все типы объектов
-print(repo.types())
-# ['Документы', 'Константы', 'Перечисления', 'РегистрыСведений', 'Справочники', ...]
-
-# Все объекты типа
-print(repo.Справочники.все())
-# ['ирАлгоритмы', 'ирОбъектыДляОтладки', 'ТемыУведомлений', ...]
-
-# Все объекты всех типов
-print(repo.объекты)
-# {'Справочники': ['ирАлгоритмы', ...], 'Документы': ['Уведомления', ...], ...}
+query = repo.query('Справочники', 'Контрагенты')
+rows = query.all()
+print(rows)
 ```
 
 ---
 
-## Слой метаданных (pydajet)
+## Модуль `pydajet`
+
+`pydajet` обеспечивает низкоуровневый доступ к метаданным 1С через DaJet Metadata.
 
 ### MetadataClient
-
-Низкоуровневый клиент для чтения метаданных 1С через .NET Runtime.
 
 ```python
 from pydajet import MetadataClient
 
 client = MetadataClient(
-    "Host=localhost;Port=5433;Database=vcbncvbn;Username=vbncvbn;Password=bvncvbn;"
+    "Host=localhost;Database=TestDB;Username=test;Password=test;"
 )
-
-# Информация о конфигурации
-print(f"Конфигурация: {client.config_name}")
-print(f"Синоним: {client.config_alias}")
-print(f"Версия платформы: {client.platform_version}")
-
-# Список типов объектов
-types = client.list_types()
-print(types)  # ['Справочники', 'Документы', ...]
-
-# Список объектов конкретного типа
-objects = client.list_objects("Справочники")
-for obj in objects:
-    print(f"  {obj['name']} → таблица {obj['table']}")
-    for prop in obj['properties']:
-        print(f"    {prop['name']}")
-        for col in prop.get('columns', []):
-            print(f"      {col['name']}: {col['type']}")
+print(client.list_types())
 ```
 
-### Структура объекта метаданных
+#### Методы
 
-```
-MetadataClient
-└── list_objects(type_name) → list[dict]
-    ├── 'name': str           # Полное имя (например, "Справочник.Контрагенты")
-    ├── 'short_name': str     # Короткое имя (например, "Контрагенты")
-    ├── 'table': str          # Имя таблицы в БД (например, "_Reference53")
-    ├── 'properties': list    # Список реквизитов
-    │   ├── 'name': str       # Человеческое имя (например, "Наименование")
-    │   └── 'columns': list   # Колонки в БД
-    │       ├── 'name': str   # Имя колонки (например, "_Description")
-    │       └── 'type': str   # Тип колонки (например, "string(150)")
-    └── 'children': list      # Табличные части
-        ├── 'name': str       # Имя табличной части
-        ├── 'table': str      # Имя таблицы в БД
-        └── 'properties': list
+- `list_types()` — возвращает список типов метаданных (`Справочники`, `Документы`, ...)
+- `list_objects(type_name)` — возвращает описание объектов типа, таблицы, реквизиты и табличные части
+
+#### Свойства
+
+- `config_name` — имя текущей конфигурации 1С
+- `config_alias` — алиас конфигурации
+- `platform_version` — версия платформы 1С
+
+### UUID utilities
+
+Утилиты для конвертации UUID между стандартным форматом и форматом 1С.
+
+```python
+from pydajet import to_1c, format_uuid
+
+uuid_bytes = to_1c("5000289c-66b6-fadf-11f1-4e880e761abe")
+print(format_uuid(uuid_bytes))
 ```
 
 ---
 
-## Слой данных (pydajet_metadata)
+## Модуль `pydajet_metadata`
 
-### Query Builder
+Этот слой работает с данными, SQLAlchemy, динамическими Pydantic-моделями, FastAPI и Polars.
 
-Построитель запросов с человеческими названиями колонок.
+### Repository
+
+`Repository` объединяет метаданные и SQLAlchemy-сессию.
 
 ```python
-from pydajet_metadata import Query
+from pydajet import MetadataClient
+from pydajet_metadata import Repository, Session
 
-# Получение Query через Repository
-query = repo.query("Справочники", "ирАлгоритмы")
+client = MetadataClient("Host=localhost;Database=TestDB;Username=test;Password=test;")
+session = Session("Host=localhost;Database=TestDB;Username=test;Password=test;")
+repo = Repository(client=client, session=session)
 
-# Все записи
-rows = query.all()
-for row in rows:
-    print(f"{row['Наименование']}: {row['ТекстАлгоритма'][:50]}...")
-
-# Первая запись
-first = query.first()
-print(first['Наименование'])
-
-# Количество записей
-count = query.count()
-print(f"Всего: {count}")
-
-# Фильтрация
-filtered = query.where(query.Наименование == 'telegram').all()
+print(repo.types())
+print(repo.objects('Справочники'))
 ```
 
-### Операции записи
+### Query
+
+CRUD-построитель для объекта 1С.
 
 ```python
-# Добавление
-new_id = query.Добавить({
-    'Наименование': 'Новый алгоритм',
-    'ТекстАлгоритма': 'Сообщить("Привет");',
-    'ДатаИзменения': datetime.now(),
-})
-print(f"Создана запись: {new_id}")
-
-# Изменение
-updated = query.Изменить(new_id, {
-    'Наименование': 'Обновлённый алгоритм',
-})
-print(f"Обновлено: {updated}")
-
-# Удаление
-deleted = query.Удалить(new_id)
-print(f"Удалено: {deleted}")
+query = repo.query('Справочники', 'ирАлгоритмы')
+print(query.count())
+print(query.where(query.Наименование == 'telegram').all())
 ```
 
-### Работа с табличными частями
+### Асинхронный режим
+
+`pydajet_metadata` теперь поддерживает параллельную структуру async-интерфейсов, оставляя существующий sync API неизменным.
 
 ```python
-# Просмотр табличных частей
-print(query.ТабличныеЧасти)
-# ['Получатели']
+from pydajet_metadata import AsyncRepository
 
-# Доступ к табличной части
-child_query = query.Часть('Получатели')
-
-# Добавление с табличной частью
-new_doc_id = query.ДобавитьСЧастями(
-    data={
-        'Дата': datetime.now(),
-        'Номер': '0000001',
-        'Проведен': True,
-        'Сообщение': 'Тестовое уведомление',
-    },
-    части={
-        'Получатели': [
-            {'Сотрудник': 'Иванов', 'Статус': 'Новый'},
-            {'Сотрудник': 'Петров', 'Статус': 'Прочитано'},
-        ]
-    }
-)
-```
-
-### Таблица методов Query
-
-| Метод | Описание | Возвращает |
-|-------|----------|------------|
-| `all()` | Все записи | `list[dict]` |
-| `first()` | Первая запись | `dict` или `None` |
-| `count()` | Количество записей | `int` |
-| `where(*conditions)` | Условие фильтрации | `self` |
-| `Добавить(data)` | Добавить запись | `str` (UUID) |
-| `Изменить(id, data)` | Изменить запись | `bool` |
-| `Удалить(id)` | Удалить запись | `bool` |
-| `ДобавитьСЧастями(data, части)` | Добавить с ТЧ | `str` (UUID) |
-| `lock(mode, row_id, nowait)` | Блокировка | `None` |
-
----
-
-## Генератор API (FastAPI)
-
-Автоматически создаёт REST API для всех объектов 1С с OpenAPI-документацией.
-
-### Генерация и запуск
-
-```python
-from pydajet_metadata import Repository, APIGenerator
-
-repo = Repository("Host=localhost;Port=5433;Database=vbncvbncvnb;Username=vcbncvbncvnb;Password=vcbncvbncv;")
-
-# Генерируем API
-api = APIGenerator(repo, title="MessageCenter API")
-app = api.generate()
-
-# Запускаем сервер
-api.run(host="0.0.0.0", port=8000)
-```
-
-### Сгенерированные endpoints
-
-| Метод | URL | Описание |
-|-------|-----|----------|
-| `GET` | `/{тип}/{объект}` | Все записи |
-| `GET` | `/{тип}/{объект}/{id}` | Запись по ID |
-| `POST` | `/{тип}/{объект}` | Создать запись |
-| `PUT` | `/{тип}/{объект}/{id}` | Обновить запись |
-| `DELETE` | `/{тип}/{объект}/{id}` | Удалить запись |
-| `GET` | `/{тип}/{объект}/count` | Количество записей |
-| `GET` | `/types` | Список типов объектов |
-| `GET` | `/types/{тип}/objects` | Список объектов типа |
-
-### Документация API
-
-- **Swagger UI:** `http://localhost:8000/docs`
-- **ReDoc:** `http://localhost:8000/redoc`
-- **OpenAPI JSON:** `http://localhost:8000/openapi.json`
-
----
-
-## Polars-интеграция
-
-Высокопроизводительная работа с данными через Polars DataFrame.
-
-### Чтение и запись
-
-```python
-from pydajet_metadata import PolarsBridge
-
-bridge = PolarsBridge(repo)
-
-# Чтение всей таблицы
-df = bridge.read("Справочники", "ирАлгоритмы")
-print(f"Загружено {df.height} записей")
-
-# Массовая вставка
-new_data = pl.DataFrame([
-    {"Наименование": "Алгоритм 1", "ТекстАлгоритма": '...'},
-    {"Наименование": "Алгоритм 2", "ТекстАлгоритма": '...'},
-])
-count = bridge.write(new_data, "Справочники", "ирАлгоритмы", mode="append")
-print(f"Вставлено {count} записей")
-
-# Массовое обновление (замена всех записей)
-df = bridge.read("Справочники", "ирАлгоритмы")
-df = df.with_columns(
-    pl.when(pl.col("Наименование").str.contains("telegram"))
-    .then(pl.lit("Обновлённый"))
-    .otherwise(pl.col("Наименование"))
-    .alias("Наименование")
-)
-bridge.write(df, "Справочники", "ирАлгоритмы", mode="replace")
-```
-
-### Аналитика
-
-```python
-analytics = bridge.analytics("Справочники", "ирАлгоритмы")
-
-# Цепочка операций
-result = (
-    analytics
-    .filter(pl.col("Наименование").str.contains("telegram"))
-    .select("Наименование", "ДатаИзменения")
-    .sort("ДатаИзменения", descending=True)
-    .collect()
+repo = AsyncRepository(
+    connection_string="Host=localhost;Port=5433;Database=MyBase;Username=postgres;Password=secret;"
 )
 
-# Группировка
-grouped = analytics.group_by("ДатаИзменения").sort("len", descending=True)
-print(grouped.collect())
+async def run():
+    query = await repo.query('Справочники', 'Контрагенты')
+    rows = await query.all()
+    print(rows)
+    await repo.close()
 ```
 
----
+Дополнительно доступны:
 
-## Динамические Pydantic-модели
+- `AsyncSession` — async-обёртка над `Session`
+- `AsyncQuery` — async-обёртка над `Query`
+- `AsyncRepository` — async-обёртка над `Repository`
+- `IAsyncSession`, `IAsyncQuery`, `IAsyncRepository`, `IAsyncMetadataClient` — асинхронные контракты
 
-Генератор моделей из метаданных 1С для валидации и сериализации.
+### SchemaGenerator
 
-### Генерация моделей
+Генерирует Pydantic-модели на основе структуры объекта.
 
 ```python
 from pydajet_metadata import SchemaGenerator
 
 gen = SchemaGenerator(repo)
-
-# Получить модель
-Алгоритм = gen.get("Справочники.ирАлгоритмы")
+model = gen['Справочники.Контрагенты']
+instance = model.from_db('9c280050-b666-dffa-11f1-4e880e761abe')
 ```
 
-### Работа с моделями
+### APIGenerator
+
+Генерирует REST API на FastAPI из репозитория.
 
 ```python
-# Создание
-alg = Алгоритм(
-    Наименование="Тестовый",
-    ТекстАлгоритма='Сообщить("Привет");',
-    ДатаИзменения=datetime.now(),
-)
-alg.save()
-print(f"ID: {alg.Ссылка}")
+from pydajet_metadata import APIGenerator
 
-# Загрузка из БД
-alg2 = Алгоритм.from_db(alg.Ссылка)
-print(f"Наименование: {alg2.Наименование}")
+app = APIGenerator(repo).generate()
+app.run()
+```
 
-# Изменение
-alg2.Наименование = "Обновлённый"
-alg2.save()
+### PolarsBridge
 
-# Удаление
-alg2.delete()
+Интеграция с `polars` для чтения и записи данных.
 
-# Все записи
-for a in Алгоритм.all():
-    print(a.Наименование)
+```python
+from pydajet_metadata import PolarsBridge
 
-# Сериализация в JSON
-json_str = alg.model_dump_json()
+bridge = PolarsBridge(repo)
+df = bridge.read('Справочники', 'Контрагенты')
+bridge.write(df, 'Справочники', 'Контрагенты')
 ```
 
 ---
 
-## Транзакции и блокировки
+## Протоколы
 
-### Транзакции
+`pydajet_metadata` разделяет контракт и реализацию через `typing.Protocol`.
+Это позволяет заменить реальный клиент или сессию моками и сохранить обратную совместимость.
 
-```python
-# Простая транзакция
-with repo.session.transaction():
-    repo.Справочники['ирАлгоритмы'].Добавить({...})
-    repo.Документы['Уведомления'].Добавить({...})
-# Автоматический commit при выходе без ошибок
-# Автоматический rollback при исключении
+### Основные интерфейсы
 
-# Вложенная транзакция (savepoint)
-with repo.session.transaction():
-    repo.Справочники['ирАлгоритмы'].Добавить({...})
-    
-    try:
-        with repo.session.savepoint():
-            repo.Документы['Уведомления'].Добавить({...})
-            raise Exception("Ошибка")
-    except Exception:
-        pass  # Документ откатится, справочник сохранится
-```
+- `IMetadataClient` — контракт клиента метаданных
+- `ISession` — контракт управления соединением и транзакциями
+- `IQuery` — контракт CRUD-запросов
+- `IColumnMapper` — контракт маппинга human ↔ db
+- `IRepository` — контракт репозитория
 
-### Блокировки
+### Преимущества
+
+- отсутствие жёсткой привязки к `pydajet`
+- тестирование через моки
+- структурное соответствие без наследования протоколов
+- нулевые runtime-накладные расходы для `TYPE_CHECKING`
+
+### Пример использования протоколов
 
 ```python
-query = repo.query("Справочники", "ирАлгоритмы")
+from unittest.mock import Mock
+from pydajet_metadata import Repository
+from pydajet_metadata.protocols import IMetadataClient, ISession
 
-# Блокировка всей таблицы (эксклюзивная)
-with repo.session.transaction():
-    query.lock(mode="exclusive")
-    # Массовое обновление
+mock_client = Mock(spec=IMetadataClient)
+mock_client.list_types.return_value = ['Справочники']
+mock_client.list_objects.return_value = [
+    {
+        'name': 'Справочник.Контрагенты',
+        'short_name': 'Контрагенты',
+        'table': '_Reference123',
+        'properties': [{'name': 'Ссылка', 'columns': [{'name': '_IDRRef'}]}],
+        'children': [],
+    }
+]
 
-# Блокировка строки (разделяемая)
-with repo.session.transaction():
-    query.lock(mode="shared", row_id="...")
-    # Чтение с гарантией, что запись не изменится
+mock_session = Mock(spec=ISession)
+mock_session.get_pk.return_value = '_idrref'
+mock_session.reflect_table.return_value = ...
 
-# Блокировка без ожидания
-try:
-    query.lock(mode="exclusive", nowait=True)
-except OperationalError:
-    print("Таблица занята")
+repo = Repository(client=mock_client, session=mock_session)
 ```
-
-### Типы блокировок
-
-| Режим | SQL | Описание |
-|-------|-----|----------|
-| `shared` | `FOR SHARE` / `LOCK TABLE ... IN SHARE MODE` | Другие читают, но не пишут |
-| `exclusive` | `FOR UPDATE` / `LOCK TABLE ... IN EXCLUSIVE MODE` | Никто не читает и не пишет |
-| `nowait` | `NOWAIT` | Ошибка, если блокировка занята |
 
 ---
 
-## UUID-конвертация
+## API контракт
 
-1С хранит UUID в особом формате — первые 8 байт переставлены местами. Модуль `_uuid.py` обеспечивает прозрачную конвертацию.
+### `MetadataClient`
 
-### Функции конвертации
+| Метод | Описание | Параметры | Возвращает |
+|-------|----------|-----------|------------|
+| `__init__(connection_string, data_source='postgresql')` | Создаёт клиента и загружает конфигурацию 1С | `connection_string: str`, `data_source: str` | `MetadataClient` |
+| `list_types()` | Возвращает список типов метаданных | без параметров | `list[str]` |
+| `list_objects(type_name)` | Возвращает объекты типа | `type_name: str` | `list[dict[str, Any]]` |
 
-```python
-from pydajet_metadata._uuid import from_1c, to_1c, generate, format_uuid
+### UUID utilities
 
-# 1С-байты → стандартный UUID
-std_uuid = from_1c(b'\x9c\x28\x00\x50\xb6\x66\xdf\xfa\x11\xf1\x4e\x88\x0e\x76\x1a\xbe')
-print(std_uuid)  # UUID('5000289c-66b6-fadf-11f1-4e880e761abe')
-
-# Стандартный UUID → 1С-байты
-c1_bytes = to_1c(std_uuid)
-
-# Генерация нового UUID
-new_uuid = generate()
-
-# Форматирование с дефисами
-formatted = format_uuid(std_uuid)
-print(formatted)  # '5000289c-66b6-fadf-11f1-4e880e761abe'
-```
-
-### Где применяется
-
-| Операция | Конвертация |
-|----------|-------------|
-| Чтение из БД | 1С-байты → UUID с дефисами |
-| Запись в БД | UUID с дефисами → 1С-байты |
-| Отображение | Всегда UUID с дефисами |
+| Функция | Описание | Параметры | Возвращает |
+|--------|----------|-----------|------------|
+| `from_1c(uuid_bytes)` | Преобразует 16 байт из формата 1С в UUID | `uuid_bytes: bytes` | `UUID` |
+| `to_1c(uuid)` | Преобразует UUID, строку или байты в формат 1С | `uuid: UUID \| str \| bytes` | `bytes` |
+| `generate()` | Генерирует новый UUID | без параметров | `UUID` |
+| `format_uuid(uuid)` | Приводит UUID к строковому виду с дефисами | `uuid: UUID \| str \| bytes` | `str` |
 
 ---
 
 ## Тестирование
 
-### Запуск тестов
+### Структура модульных тестов
 
-```bash
-# Все тесты
-pytest
-
-# Конкретный файл
-pytest tests/test_uuid.py -v
-
-# С покрытием
-pytest --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=html
+```
+tests/
+├── unit/
+│   ├── bridge/test_bridge.py
+│   ├── mapper/test_mapper.py
+│   ├── query/test_query_extended.py
+│   ├── repository/test_repository.py
+│   ├── schema/test_schema_extended.py
+│   └── session/test_session_extended.py
+└── conftest.py
 ```
 
-### Структура тестов
+### Что покрыто
 
-| Файл | Что тестирует | Кол-во тестов |
-|------|--------------|---------------|
-| `test_uuid.py` | UUID-конвертация | 12 |
-| `test_types.py` | Маппинг типов | 20 |
-| `test_session.py` | Подключение и транзакции | 6 |
-| `test_query.py` | Query builder + блокировки | 12 |
-| `test_repository.py` | Repository | 5 |
-| `test_api.py` | FastAPI-эндпоинты | 10 |
-| `test_schema.py` | Pydantic-модели | 1 |
-| `test_polars_bridge.py` | Polars-интеграция | 2 |
-| **Всего** | | **68** |
+- `Session`: обработка подключения, кэш рефлексии, PK fallback, транзакции и savepoint
+- `Query`: чтение, запись, фильтрация, блокировки, версии, `Изменить`/`БезопасноеИзменить`
+- `SchemaGenerator`: динамические Pydantic-модели, табличные части, `from_db()`, `save()`, `delete()`, `all()`
+- `PolarsBridge`: чтение/запись `DataFrame`, append/replace, вложенные табличные части
+- `Repository`: DI-конструктор, кэш метаданных, `types()`, `objects()`, `query()`, `refresh_metadata()`
+- `ColumnMapper`: `human_to_db`, `db_to_human`, работа с бинарными типами и UUID
 
-### Покрытие кода
+### Запуск
 
-| Модуль | Покрытие |
-|--------|----------|
-| `_uuid.py` | 95% |
-| `_types.py` | 100% |
-| `api.py` | 93% |
-| `query.py` | 66% |
-| `repository.py` | 68% |
-| `session.py` | 42% |
-| `bridge.py` | 51% |
-| `schema.py` | 54% |
-| **Общее** | **59%** |
+```bash
+uv run pytest tests/ -q
+uv run mypy src/pydajet_metadata --strict
+uv run pytest tests/ --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=term-missing
+```
+
+---
+
+## Текущее состояние
+
+- `242 passed, 2 skipped`
+- `96%` покрытие по `src/pydajet` и `src/pydajet_metadata`
+
+## Миграция
+
+### Было
+
+```python
+from pydajet.parser import MetadataParser
+from pydajet.config import ConfigReader
+
+class Analyzer:
+    def __init__(self, parser: MetadataParser, config: ConfigReader):
+        ...
+```
+
+### Стало
+
+```python
+from pydajet_metadata.protocols import IMetadataClient, ISession
+
+class Analyzer:
+    def __init__(self, parser: IMetadataClient, session: ISession):
+        ...
+```
+
+Протоколы описывают контракт, а не реализацию. Это упрощает подмену зависимостей и снижает область жестких связей.
+
+---
+
+## Полезные ссылки
+
+- `pyproject.toml` — зависимости и сборка
+- `tests/` — тесты и фикстуры
+- `src/pydajet_metadata/protocols.py` — контракты DI
+- `src/pydajet_metadata/repository.py` — основной репозиторий
+- `src/pydajet_metadata/query.py` — CRUD и блокировки

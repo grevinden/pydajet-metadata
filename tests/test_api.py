@@ -135,3 +135,17 @@ class TestAPIGenerator:
     async def test_redoc(self, client):
         response = await client.get("/redoc")
         assert response.status_code == 200
+
+    def test_run_calls_uvicorn(self, mock_repo, monkeypatch):
+        generator = APIGenerator(mock_repo)
+        mock_called = {}
+
+        def fake_run(app, host, port):
+            mock_called['app'] = app
+            mock_called['host'] = host
+            mock_called['port'] = port
+
+        monkeypatch.setattr('pydajet_metadata.api.uvicorn.run', fake_run)
+        generator.run(host='127.0.0.1', port=9999)
+        assert mock_called['host'] == '127.0.0.1'
+        assert mock_called['port'] == 9999
