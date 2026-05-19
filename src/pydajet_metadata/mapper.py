@@ -1,17 +1,22 @@
 # src/pydajet_metadata/mapper.py
 """ColumnMapper: преобразование human ↔ db ↔ python для одной таблицы."""
 
-from typing import TYPE_CHECKING, Any
+from __future__ import annotations
+
+from typing import Protocol
 
 from sqlalchemy import LargeBinary
+from sqlalchemy.sql.schema import Column, Table
 
 from pydajet_metadata._uuid import format_uuid, from_1c, to_1c
-
-if TYPE_CHECKING:
-    from pydajet_metadata.protocols import IColumnMapper
+from pydajet_metadata.protocols import ColumnMap, RowDict
 
 
-class ColumnMapper:  # Структурно соответствует IColumnMapper
+class RowLike(Protocol):
+    def __getattr__(self, name: str) -> object: ...
+
+
+class ColumnMapper:
     """
     Маппинг имён колонок между человеческим форматом и БД.
 
@@ -22,22 +27,13 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
     def __repr__(self) -> str:
         return f"ColumnMapper(columns={len(self._column_map)})"
 
-    def __init__(self, table: Any, column_map: dict[str, str]) -> None:
-        """Инициализирует маппер колонок для одной таблицы.
-
-        Args:
-            table: SQLAlchemy Table.
-            column_map: Словарь human_name → db_name.
-        """
+    def __init__(self, table: Table, column_map: ColumnMap) -> None:
         self._table = table
-        self._column_map = column_map  # {human: db_name}
-        self._reverse_map = {
-            v.lower(): k for k, v in column_map.items()
-        }  # {db_name_lower: human}
+        self._column_map = column_map
+        self._reverse_map = {v.lower(): k for k, v in column_map.items()}
 
-    def human_to_db(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Преобразует {human_name: value} → {db_name: value}."""
-        db_data = {}
+    def human_to_db(self, data: RowDict) -> dict[str, object]:
+        db_data: dict[str, object] = {}
         for human_name, value in data.items():
             if human_name in self._column_map:
                 db_name = self._column_map[human_name].lower()
@@ -53,9 +49,8 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
                 db_data[human_name.lower()] = value
         return db_data
 
-    def db_to_human(self, row: Any) -> dict[str, Any]:
-        """Преобразует строку БД → {human_name: value}."""
-        d = {}
+    def db_to_human(self, row: RowLike) -> RowDict:
+        d: RowDict = {}
         for col in self._table.columns:
             human_name = self._reverse_map.get(col.name.lower(), col.name)
             val = getattr(row, col.name)
@@ -66,8 +61,7 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
             d[human_name] = val
         return d
 
-    def get_db_column(self, human_name: str) -> Any:
-        """Возвращает SQLAlchemy Column по человеческому имени."""
+    def get_db_column(self, human_name: str) -> Column[object]:
         if human_name in self._column_map:
             db_name = self._column_map[human_name].lower()
             if db_name in self._table.c:
@@ -76,16 +70,13 @@ class ColumnMapper:  # Структурно соответствует IColumnMa
 
     @property
     def human_names(self) -> list[str]:
-        """Список человеческих имён колонок."""
         return list(self._column_map.keys())
 
     @property
     def db_names(self) -> list[str]:
-        """Список имён колонок в БД."""
         return [v.lower() for v in self._column_map.values()]
 
     def _is_binary(self, db_name: str) -> bool:
-        """Проверяет, является ли колонка бинарной."""
         return db_name in self._table.c and isinstance(
             self._table.c[db_name].type, LargeBinary
         )

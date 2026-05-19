@@ -1,0 +1,3 @@
+"""Stub: System (минимально для Guid) — pydajet-metadata."""
+
+class Guid: ...

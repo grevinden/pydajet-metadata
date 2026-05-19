@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, List
+from collections.abc import Callable
+from typing import cast
 
 from pydajet_metadata.async_query import AsyncQuery
 from pydajet_metadata.async_session import AsyncSession
-from pydajet_metadata.protocols import IAsyncRepository
+from pydajet_metadata.protocols import IAsyncRepository, IMetadataClient, ITypeAccessor
 from pydajet_metadata.repository import Repository
 from pydajet_metadata.session import Session
 
@@ -18,10 +19,11 @@ class AsyncRepository(IAsyncRepository):
         connection_string: str | None = None,
         data_source: str = "postgresql",
         *,
-        client: Any | None = None,
+        client: IMetadataClient | None = None,
         session: Session | AsyncSession | None = None,
-        client_factory: Any | None = None,
-    ):
+        client_factory: Callable[[str, str], IMetadataClient] | None = None,
+    ) -> None:
+        sync_session: Session | None
         if isinstance(session, AsyncSession):
             sync_session = session._inner
         else:
@@ -37,7 +39,7 @@ class AsyncRepository(IAsyncRepository):
             session=sync_session,
             client_factory=client_factory,
         )
-        self._session = AsyncSession.from_session(self._repo.session)
+        self._session = AsyncSession.from_session(cast(Session, self._repo.session))
 
     @property
     def session(self) -> AsyncSession:
@@ -51,10 +53,10 @@ class AsyncRepository(IAsyncRepository):
     def metadata_version(self) -> int:
         return self._repo.metadata_version
 
-    async def types(self) -> List[str]:
+    async def types(self) -> list[str]:
         return await asyncio.to_thread(self._repo.types)
 
-    async def objects(self, type_name: str) -> List[str]:
+    async def objects(self, type_name: str) -> list[str]:
         return await asyncio.to_thread(self._repo.objects, type_name)
 
     async def query(self, type_name: str, object_name: str) -> AsyncQuery:
@@ -70,5 +72,5 @@ class AsyncRepository(IAsyncRepository):
     async def close(self) -> None:
         await asyncio.to_thread(self._repo.close)
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._repo, name)
+    def __getattr__(self, name: str) -> ITypeAccessor:
+        return cast(ITypeAccessor, getattr(self._repo, name))

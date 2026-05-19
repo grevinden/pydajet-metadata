@@ -1,15 +1,17 @@
 [project]
 name = "pydajet-metadata"
 version = "0.1.0"
-description = "..."
+description = "Python client for 1C:Enterprise 8 metadata and data (PostgreSQL, MS SQL Server)"
 requires-python = ">=3.13"
 dependencies = [
     "build>=1.5.0",
+    "cashews>=7.5.0",
     "fastapi>=0.136.1",
     "icecream>=2.2.0",
     "polars>=1.40.1",
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
+    "pydantic-settings>=2.12.0",
     "pythonnet>=3.0.5",
     "pyyaml>=6.0.3",
     "sqlalchemy>=2.0.49",
@@ -86,3 +88,17 @@ omit = [
     "**/pycharm/*",
     "**/_jb_*",
 ]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src:stubs"
+packages = ["pydajet", "pydajet_metadata"]
+explicit_package_bases = true
+strict = true
+warn_unused_ignores = true
+show_error_codes = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "pydajet_metadata._pydantic_factory"
+disable_error_code = ["valid-type"]

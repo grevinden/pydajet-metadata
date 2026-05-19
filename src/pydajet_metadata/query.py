@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional, cast
+
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.types import TypeEngine
 
 from pydantic import validate_call
 from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.types import Boolean, DateTime, Float, Integer, LargeBinary, String
 
+from pydajet_metadata._sql_types import SqlPkColumn, SqlPkCondition, SqlWhereClause
 from pydajet_metadata._uuid import format_uuid, generate, to_1c
+from pydajet_metadata.protocols import ColumnMap, RowDict
 from pydajet_metadata.exceptions import VersionConflictError
-from pydajet_metadata.mapper import ColumnMapper
+from pydajet_metadata.mapper import ColumnMapper, RowLike
 
 if TYPE_CHECKING:
     from pydajet_metadata.protocols import ISession
@@ -34,28 +39,28 @@ class Query:
         self._mapper = ColumnMapper(self._table, column_map)
         self._pk = pk.lower()
         self._owner_key = owner_key.lower()
-        self._where: list[Any] = []
+        self._where: list[SqlWhereClause] = []
         self._children: dict[str, "Query"] = {}
 
     @property
-    def _column_map(self) -> dict[str, str]:
+    def _column_map(self) -> ColumnMap:
         """Прокси к маппингу колонок из ColumnMapper (для совместимости с IQuery)."""
         return self._mapper._column_map
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> Column[object]:
         try:
             return self._mapper.get_db_column(name)
         except KeyError:
             raise AttributeError(f"Column '{name}' not found")
 
-    def where(self, *conditions: Any) -> Query:
+    def where(self, *conditions: SqlWhereClause) -> Query:
         """Добавляет WHERE-условия к запросу и возвращает self для цепочки."""
         self._where = list(conditions)
         return self
 
     # ─── Read ─────────────────────────────────────────
 
-    def all(self) -> list[dict[str, Any]]:
+    def all(self) -> list[RowDict]:
         """Возвращает все строки, соответствующие текущему фильтру."""
         stmt = select(self._table)
         for c in self._where:
@@ -63,14 +68,14 @@ class Query:
         with self._session.engine.connect() as conn:
             return [self._row_to_dict(r) for r in conn.execute(stmt).all()]
 
-    def first(self) -> Optional[dict[str, Any]]:
+    def first(self) -> Optional[RowDict]:
         """Возвращает первую строку или None, если записей нет."""
         stmt = select(self._table).limit(1)
         for c in self._where:
             stmt = stmt.where(c)
         with self._session.engine.connect() as conn:
             row = conn.execute(stmt).first()
-            return self._row_to_dict(row) if row else None
+            return self._row_to_dict(cast(RowLike, row)) if row else None
 
     def count(self) -> int:
         """Возвращает количество строк, соответствующих текущему фильтру."""
@@ -78,12 +83,12 @@ class Query:
         for c in self._where:
             stmt = stmt.where(c)
         with self._session.engine.connect() as conn:
-            result: Any = conn.execute(stmt).scalar()
-            return int(result) if result is not None else 0
+            scalar = conn.execute(stmt).scalar()
+            return int(scalar) if scalar is not None else 0
 
     # ─── Write ────────────────────────────────────────
 
-    def insert(self, data: dict[str, Any], extra: dict[str, Any] | None = None) -> str:
+    def insert(self, data: RowDict, extra: RowDict | None = None) -> str:
         """Вставляет новую запись и возвращает UUID созданного объекта."""
         new_uuid = generate()
         db = self._human_to_db(data)
@@ -103,7 +108,7 @@ class Query:
 
         return format_uuid(new_uuid)
 
-    def update(self, record_id: str, data: dict[str, Any]) -> bool:
+    def update(self, record_id: str, data: RowDict) -> bool:
         """Обновляет запись по UUID, возвращает True, если строка была изменена."""
         db = self._human_to_db(data)
         stmt = (
@@ -122,25 +127,25 @@ class Query:
             result = conn.execute(stmt)
             return bool(result.rowcount > 0)
 
-    def _pk_condition(self, record_id: str) -> Any:
+    def _pk_condition(self, record_id: str) -> SqlPkCondition:
         if self._pk in self._table.c:
             return self._table.c[self._pk] == to_1c(record_id)
         return text(f"{self._pk} = :pk").bindparams(pk=to_1c(record_id))
 
-    def _pk_column(self) -> Any:
+    def _pk_column(self) -> SqlPkColumn:
         if self._pk in self._table.c:
             return self._table.c[self._pk]
         return text(self._pk)
 
     # ─── Internal ─────────────────────────────────────
 
-    def _row_to_dict(self, row: Any) -> dict[str, Any]:
+    def _row_to_dict(self, row: RowLike) -> RowDict:
         return self._mapper.db_to_human(row)
 
-    def _human_to_db(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _human_to_db(self, data: RowDict) -> dict[str, object]:
         return self._mapper.human_to_db(data)
 
-    def _fill_defaults(self, db: dict[str, Any]) -> None:
+    def _fill_defaults(self, db: dict[str, object]) -> None:
         for col in self._table.columns:
             name = col.name.lower()
             if name not in db:
@@ -148,7 +153,7 @@ class Query:
                 if d is not None:
                     db[name] = d
 
-    def _default(self, col: Any) -> Any:
+    def _default(self, col: Column[object]) -> object | None:
         name = col.name.lower()
         if name == "_version":
             return 0
@@ -228,7 +233,9 @@ class Query:
 
         if row_id is not None:
             pk_col = self._pk_column()
-            stmt = select(self._table).where(pk_col == to_1c(row_id))
+            stmt = select(self._table).where(
+                cast(SqlWhereClause, pk_col == to_1c(row_id))
+            )
             if dialect_name == "mssql":
                 hint_parts = ["ROWLOCK"]
                 if mode == "exclusive":
@@ -271,7 +278,9 @@ class Query:
             return 0
 
         pk_bytes = to_1c(record_id)
-        stmt = select(self._table.c._version).where(self._pk_column() == pk_bytes)
+        stmt = select(self._table.c._version).where(
+            cast(SqlWhereClause, self._pk_column() == pk_bytes)
+        )
         with self._session.engine.connect() as conn:
             result = conn.execute(stmt).scalar()
             return result if result is not None else 0
@@ -280,7 +289,7 @@ class Query:
     def Изменить(
         self,
         record_id: str,
-        data: dict[str, Any],
+        data: RowDict,
         expected_version: int | None = None,
     ) -> bool:
         pk_bytes = to_1c(record_id)
@@ -301,7 +310,7 @@ class Query:
 
         stmt = (
             update(self._table)
-            .where(self._pk_column() == pk_bytes)
+            .where(cast(SqlWhereClause, self._pk_column() == pk_bytes))
             .values(**db_data)
         )
 
@@ -313,7 +322,7 @@ class Query:
     def БезопасноеИзменить(
         self,
         record_id: str,
-        data: dict[str, Any],
+        data: RowDict,
     ) -> bool:
         current = self._get_current_version(record_id)
         return self.Изменить(record_id, data, expected_version=current)

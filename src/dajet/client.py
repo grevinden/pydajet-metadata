@@ -1,9 +1,13 @@
-"""Compatibility shim: provide `dajet.client.MetadataProvider` for tests.
+"""Compatibility shim: provide `dajet.client.MetadataProvider` for tests."""
 
-This module intentionally proxies to `pydajet` so tests that patch
-`dajet.client.MetadataProvider` still work.
-"""
+from __future__ import annotations
+
+from pydajet._dotnet import MetadataProviderType
+
+MetadataProvider: MetadataProviderType
 try:
-    from pydajet import MetadataProvider  # type: ignore
+    from pydajet import MetadataProvider as _MetadataProvider
+
+    MetadataProvider = _MetadataProvider
 except Exception:
     MetadataProvider = None

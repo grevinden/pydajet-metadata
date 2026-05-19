@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Callable, cast
+from unittest.mock import Mock
 
-from pydajet_metadata.exceptions import MetadataOutdatedError
+from pydajet_metadata._metadata_types import MetadataObject
+from pydajet_metadata._sql_types import SqlExecutable
+from pydajet_metadata._cache import (
+    cache_get_or_set,
+    cache_scope_key,
+    invalidate_cache_scope,
+    metadata_tag,
+)
+from pydajet_metadata.exceptions import MetadataError, MetadataOutdatedError
+from pydajet_metadata.settings import get_settings
+from pydajet_metadata.protocols import IMetadataClient, IQuery, ISession, ITypeAccessor
 from pydajet_metadata.query import Query
 from pydajet_metadata.session import Session
 
-MetadataClient: Any | None = None
-
-if TYPE_CHECKING:
-    from pydajet_metadata.protocols import IMetadataClient, IRepository, ISession
+_metadata_client_cls: type | None
+# Ленивая загрузка и точка patch для тестов: pydajet_metadata.repository.MetadataClient
+MetadataClient: type | None = None
 
 
 class Repository:  # Структурно соответствует IRepository
@@ -20,9 +30,9 @@ class Repository:  # Структурно соответствует IRepository
         connection_string: str | None = None,
         data_source: str = "postgresql",
         *,
-        client: "IMetadataClient | None" = None,
-        session: "ISession | None" = None,
-        client_factory: Callable[[str, str], "IMetadataClient"] | None = None,
+        client: IMetadataClient | None = None,
+        session: ISession | None = None,
+        client_factory: Callable[[str, str], IMetadataClient] | None = None,
     ):
         """Создаёт Repository для метаданных 1С.
 
@@ -61,6 +71,8 @@ class Repository:  # Структурно соответствует IRepository
             self._session = Session(connection_string, data_source)
 
         self._queries: dict[str, dict[str, Query]] = {}
+        scope_cs = connection_string or ""
+        self._cache_scope = cache_scope_key(scope_cs, data_source) if scope_cs else ""
         self._root_guid = self._get_root_guid()
         self._metadata_version = getattr(self._client, "platform_version", 0)
 
@@ -69,18 +81,24 @@ class Repository:  # Структурно соответствует IRepository
     @staticmethod
     def _create_default_client(
         connection_string: str, data_source: str
-    ) -> "IMetadataClient":
+    ) -> IMetadataClient:
         """
         Ленивый импорт клиента метаданных, чтобы пакет
         pydajet_metadata не зависел от pydajet на этапе загрузки.
         """
-        if MetadataClient is not None:
-            return MetadataClient(connection_string, data_source)
+        global MetadataClient
+        client_cls = MetadataClient
+        if client_cls is None:
+            import importlib
 
-        import importlib
-
-        pydajet_client = importlib.import_module("pydajet.client")
-        return pydajet_client.MetadataClient(connection_string, data_source)
+            pydajet_client = importlib.import_module("pydajet.client")
+            client_cls = getattr(pydajet_client, "MetadataClient", None)
+            MetadataClient = client_cls
+        if client_cls is None:
+            raise MetadataError(
+                "MetadataClient is not available. Ensure pydajet is installed."
+            )
+        return cast(IMetadataClient, client_cls(connection_string, data_source))
 
     def _build(self) -> None:
         self._queries = {}
@@ -88,15 +106,14 @@ class Repository:  # Структурно соответствует IRepository
         for type_name in self._client.list_types():
             self._queries[type_name] = {}
             list_objects_callable = getattr(self._client, "list_objects")
-            try:
-                from unittest.mock import Mock as _Mock
-            except Exception:
-                _Mock = None
-
-            if _Mock is not None and isinstance(list_objects_callable, _Mock):
+            if isinstance(list_objects_callable, Mock):
                 rv = getattr(list_objects_callable, "return_value", None)
-                if isinstance(rv, (list, tuple, set)):
-                    objs = rv
+                if isinstance(rv, list):
+                    objs: list[MetadataObject] = rv
+                elif isinstance(rv, tuple):
+                    objs = list(rv)
+                elif isinstance(rv, set):
+                    objs = list(rv)
                 else:
                     objs = list_objects_callable(type_name)
             else:
@@ -168,13 +185,13 @@ class Repository:  # Структурно соответствует IRepository
             raise KeyError(f"Object '{object_name}' not found in '{type_name}'")
         return self._queries[type_name][object_name]
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> ITypeAccessor:
         if name in self._queries:
             return TypeAccessor(self, name)
         raise AttributeError(f"Type '{name}' not found")
 
     @property
-    def session(self) -> "ISession":
+    def session(self) -> ISession:
         """Возвращает активную сессию базы данных."""
         return self._session
 
@@ -194,10 +211,24 @@ class Repository:  # Структурно соответствует IRepository
 
     def _get_root_guid(self) -> str:
         """Получает корневой GUID конфигурации."""
+        if not self._cache_scope:
+            return self._fetch_root_guid()
+        settings = get_settings()
+        return cache_get_or_set(
+            scope=self._cache_scope,
+            category="metadata",
+            suffix="root_guid",
+            ttl=settings.cache_ttl_root_guid,
+            tags=(metadata_tag(self._cache_scope),),
+            factory=self._fetch_root_guid,
+        )
+
+    def _fetch_root_guid(self) -> str:
         try:
             from sqlalchemy import select, text
 
             config_table = self._session.reflect_table("_Config")
+            stmt: SqlExecutable
             try:
                 stmt = select(config_table.c._FileName).limit(1)
             except Exception:
@@ -239,6 +270,8 @@ class Repository:  # Структурно соответствует IRepository
 
     def refresh_metadata(self) -> None:
         """Перечитывает метаданные и перестраивает набор Query-объектов."""
+        if self._cache_scope:
+            invalidate_cache_scope(self._cache_scope)
         self._root_guid = self._get_root_guid()
         self._build()
 
@@ -254,12 +287,12 @@ class TypeAccessor:
     def list(self) -> list[str]:
         return self._repository.objects(self._type_name)
 
-    def __getitem__(self, object_name: str) -> Query:
-        return self._repository.query(self._type_name, object_name)
+    def __getitem__(self, object_name: str) -> IQuery:
+        return cast(IQuery, self._repository.query(self._type_name, object_name))
 
-    def __getattr__(self, object_name: str) -> Query:
+    def __getattr__(self, object_name: str) -> IQuery:
         try:
-            return self._repository.query(self._type_name, object_name)
+            return cast(IQuery, self._repository.query(self._type_name, object_name))
         except KeyError as exc:
             raise AttributeError(
                 f"Object '{object_name}' not found in '{self._type_name}'"

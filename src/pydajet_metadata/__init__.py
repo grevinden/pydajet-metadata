@@ -2,7 +2,7 @@
 pydajet_metadata — Прикладной слой для работы с данными 1С.
 """
 
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 # Протоколы (typing.Protocol) для структурной типизации
 from pydajet_metadata.protocols import (
@@ -33,7 +33,7 @@ ConnectionString: TypeAlias = str  # "Host=...;Port=...;Database=...;..."
 TableName: TypeAlias = str  # "_Reference53"
 HumanName: TypeAlias = str  # "Наименование"
 DbColumnName: TypeAlias = str  # "_Description"
-RowDict: TypeAlias = dict[str, Any]  # Строка БД как словарь
+RowDict: TypeAlias = dict[str, object]  # Строка БД как словарь
 
 __all__ = [
     # Протоколы

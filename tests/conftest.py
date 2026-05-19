@@ -1,5 +1,9 @@
 """Общие фикстуры для всех тестов."""
 
+import os
+
+os.environ.setdefault("PYDAJET_CACHE_ENABLED", "false")
+
 import pytest
 from datetime import datetime
 from uuid import UUID
