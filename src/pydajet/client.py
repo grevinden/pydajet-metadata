@@ -102,13 +102,6 @@ class MetadataClient:
             break
         return result
 
-    def _get_entity(self, name: str):
-        try:
-            result = self._provider.GetMetadataObject(name)
-            return result[0] if isinstance(result, tuple) else result
-        except Exception:
-            return None
-
     def _extract_properties(self, entity) -> list[dict]:
         props = []
         if entity.Properties:

@@ -33,8 +33,6 @@ def format_uuid(uuid: UUID | str | bytes) -> str:
         return str(from_1c(uuid))
     return str(uuid)
 
-
-# src/pydajet_metadata/_uuid.py — добавить:
 def is_valid_hex(value: str) -> bool:
     """Проверяет, является ли строка валидной hex-строкой UUID."""
     try:
