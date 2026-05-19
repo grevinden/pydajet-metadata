@@ -52,9 +52,21 @@ class FakeProvider:
         )
 
 
+class FakeMetadata:
+    def __init__(self, metadata_map):
+        self._metadata_map = metadata_map
+
+    @property
+    def Keys(self):
+        return list(self._metadata_map.keys())
+
+    def __getitem__(self, key):
+        return self._metadata_map[key]
+
+
 class FakeConfig:
     def __init__(self, metadata_map, name="Cfg", alias=None):
-        self.Metadata = metadata_map
+        self.Metadata = FakeMetadata(metadata_map)
         self.Name = name
         self.Alias = alias
         # map index to name
@@ -92,9 +104,15 @@ def import_client_with_fakes():
     builtins.MetadataError = MetadataError
 
     sys.modules["pydajet"] = fake
-    # Now import module
-    mod = importlib.import_module("pydajet.client")
-    importlib.reload(mod)
+    # Load pydajet.client from file to avoid package import issues.
+    import importlib.util
+    from pathlib import Path
+
+    client_path = Path(__file__).resolve().parents[1] / "src" / "pydajet" / "client.py"
+    spec = importlib.util.spec_from_file_location("pydajet.client", str(client_path))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["pydajet.client"] = mod
+    spec.loader.exec_module(mod)
     return mod
 
 
