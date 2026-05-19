@@ -11,8 +11,10 @@
 - [Модуль `pydajet`](#модуль-pydajet)
 - [Модуль `pydajet_metadata`](#модуль-pydajet_metadata)
 - [Протоколы](#протоколы)
+- [API контракт](#api-контракт)
 - [Тестирование](#тестирование)
 - [Текущее состояние](#текущее-состояние)
+- [Миграция](#миграция)
 - [Полезные ссылки](#полезные-ссылки)
 
 ---
@@ -22,9 +24,9 @@
 Проект разделён на два независимых слоя:
 
 - `pydajet` — низкоуровневый доступ к DaJet Metadata через .NET Runtime и `pythonnet`
-- `pydajet_metadata` — высокоуровневый Python API для работы с данными, динамическими моделями, REST и аналитикой
+- `pydajet_metadata` — прикладной Python API для работы с данными, динамическими моделями, REST и аналитикой
 
-Основная цель: сохранить обратную совместимость, разнести метаданные и данные по слоям и сделать прикладную логику легко тестируемой.
+Основная цель: разнести метаданные и данные по слоям, сохранить обратную совместимость и сделать прикладную логику легко тестируемой, в том числе через мокируемые протоколы.
 
 ---
 
@@ -99,14 +101,14 @@ client = MetadataClient(
 print(client.list_types())
 ```
 
-#### Основные методы
+#### Методы
 
 - `list_types()` — возвращает список типов метаданных (`Справочники`, `Документы`, ...)
-- `list_objects(type_name)` — возвращает описания объектов выбранного типа, таблиц, реквизитов и табличных частей
+- `list_objects(type_name)` — возвращает описание объектов типа, таблицы, реквизиты и табличные части
 
 #### Свойства
 
-- `config_name` — имя конфигурации 1С
+- `config_name` — имя текущей конфигурации 1С
 - `config_alias` — алиас конфигурации
 - `platform_version` — версия платформы 1С
 
@@ -145,7 +147,7 @@ print(repo.objects('Справочники'))
 
 ### Query
 
-Построитель CRUD-запросов для объекта 1С.
+CRUD-построитель для объекта 1С.
 
 ```python
 query = repo.query('Справочники', 'ирАлгоритмы')
@@ -192,15 +194,23 @@ bridge.write(df, 'Справочники', 'Контрагенты')
 
 ## Протоколы
 
-`pydajet_metadata` работает через `typing.Protocol`, чтобы отделить контракт от реализации.
+`pydajet_metadata` разделяет контракт и реализацию через `typing.Protocol`.
+Это позволяет заменить реальный клиент или сессию моками и сохранить обратную совместимость.
 
 ### Основные интерфейсы
 
 - `IMetadataClient` — контракт клиента метаданных
 - `ISession` — контракт управления соединением и транзакциями
-- `IQuery` — контракт CRUD-запросов для объекта
-- `IColumnMapper` — маппинг human ↔ db
+- `IQuery` — контракт CRUD-запросов
+- `IColumnMapper` — контракт маппинга human ↔ db
 - `IRepository` — контракт репозитория
+
+### Преимущества
+
+- отсутствие жёсткой привязки к `pydajet`
+- тестирование через моки
+- структурное соответствие без наследования протоколов
+- нулевые runtime-накладные расходы для `TYPE_CHECKING`
 
 ### Пример использования протоколов
 
@@ -230,7 +240,53 @@ repo = Repository(client=mock_client, session=mock_session)
 
 ---
 
+## API контракт
+
+### `MetadataClient`
+
+| Метод | Описание | Параметры | Возвращает |
+|-------|----------|-----------|------------|
+| `__init__(connection_string, data_source='postgresql')` | Создаёт клиента и загружает конфигурацию 1С | `connection_string: str`, `data_source: str` | `MetadataClient` |
+| `list_types()` | Возвращает список типов метаданных | без параметров | `list[str]` |
+| `list_objects(type_name)` | Возвращает объекты типа | `type_name: str` | `list[dict[str, Any]]` |
+
+### UUID utilities
+
+| Функция | Описание | Параметры | Возвращает |
+|--------|----------|-----------|------------|
+| `from_1c(uuid_bytes)` | Преобразует 16 байт из формата 1С в UUID | `uuid_bytes: bytes` | `UUID` |
+| `to_1c(uuid)` | Преобразует UUID, строку или байты в формат 1С | `uuid: UUID \| str \| bytes` | `bytes` |
+| `generate()` | Генерирует новый UUID | без параметров | `UUID` |
+| `format_uuid(uuid)` | Приводит UUID к строковому виду с дефисами | `uuid: UUID \| str \| bytes` | `str` |
+
+---
+
 ## Тестирование
+
+### Структура модульных тестов
+
+```
+tests/
+├── unit/
+│   ├── bridge/test_bridge.py
+│   ├── mapper/test_mapper.py
+│   ├── query/test_query_extended.py
+│   ├── repository/test_repository.py
+│   ├── schema/test_schema_extended.py
+│   └── session/test_session_extended.py
+└── conftest.py
+```
+
+### Что покрыто
+
+- `Session`: обработка подключения, кэш рефлексии, PK fallback, транзакции и savepoint
+- `Query`: чтение, запись, фильтрация, блокировки, версии, `Изменить`/`БезопасноеИзменить`
+- `SchemaGenerator`: динамические Pydantic-модели, табличные части, `from_db()`, `save()`, `delete()`, `all()`
+- `PolarsBridge`: чтение/запись `DataFrame`, append/replace, вложенные табличные части
+- `Repository`: DI-конструктор, кэш метаданных, `types()`, `objects()`, `query()`, `refresh_metadata()`
+- `ColumnMapper`: `human_to_db`, `db_to_human`, работа с бинарными типами и UUID
+
+### Запуск
 
 ```bash
 uv run pytest tests/ -q
@@ -245,11 +301,30 @@ uv run pytest tests/ --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=t
 - `242 passed, 2 skipped`
 - `96%` покрытие по `src/pydajet` и `src/pydajet_metadata`
 
-## Что исправлено
+## Миграция
 
-- Исправлена логика `Query._pk_condition` для случая отсутствующего PK-столбца
-- Повышена изоляция тестов импорта `pydajet` без .NET Runtime
-- Документация объединена и централизована в `README.md`
+### Было
+
+```python
+from pydajet.parser import MetadataParser
+from pydajet.config import ConfigReader
+
+class Analyzer:
+    def __init__(self, parser: MetadataParser, config: ConfigReader):
+        ...
+```
+
+### Стало
+
+```python
+from pydajet_metadata.protocols import IMetadataClient, ISession
+
+class Analyzer:
+    def __init__(self, parser: IMetadataClient, session: ISession):
+        ...
+```
+
+Протоколы описывают контракт, а не реализацию. Это упрощает подмену зависимостей и снижает область жестких связей.
 
 ---
 
