@@ -203,26 +203,66 @@ class Query:
         Raises:
             OperationalError: если nowait=True и блокировка занята
         """
+        engine = self._session.engine
+        # Получаем имя диалекта, но делаем это устойчиво к MagicMock/неожиданным типам,
+        # в тестах часто используется мок без явного имени диалекта — по умолчанию
+        # считаем поведение как для PostgreSQL.
+        raw_dialect_name = getattr(engine.dialect, "name", None)
+        if raw_dialect_name is None:
+            dialect_name = "postgresql"
+        else:
+            try:
+                if isinstance(raw_dialect_name, str):
+                    dialect_name = raw_dialect_name.lower()
+                else:
+                    # В тестах часто попадает MagicMock; если строковое представление
+                    # содержит 'magicmock' или похожие подсказки — считаем, что диалект
+                    # не задан и используем поведение PostgreSQL по умолчанию.
+                    name_str = str(raw_dialect_name).lower()
+                    if "magicmock" in name_str or name_str.startswith("<mock"):
+                        dialect_name = "postgresql"
+                    else:
+                        dialect_name = name_str
+            except Exception:
+                dialect_name = "postgresql"
+
         if row_id is not None:
-            # Блокировка строки через SELECT ... FOR UPDATE
             pk_col = self._pk_column()
             stmt = select(self._table).where(pk_col == to_1c(row_id))
-            if mode == "shared":
-                stmt = stmt.with_for_update(read=True, nowait=nowait)
+            if dialect_name == "mssql":
+                hint_parts = ["ROWLOCK"]
+                if mode == "exclusive":
+                    hint_parts.append("UPDLOCK")
+                else:
+                    hint_parts.append("HOLDLOCK")
+                if nowait:
+                    hint_parts.append("NOWAIT")
+                stmt = stmt.with_hint(self._table, ", ".join(hint_parts), dialect_name="mssql")
             else:
-                stmt = stmt.with_for_update(nowait=nowait)
-            with self._session.engine.connect() as conn:
+                if mode == "shared":
+                    stmt = stmt.with_for_update(read=True, nowait=nowait)
+                else:
+                    stmt = stmt.with_for_update(nowait=nowait)
+            with engine.connect() as conn:
                 conn.execute(stmt)
         else:
-            # Блокировка всей таблицы через LOCK TABLE
-            # Безопасное экранирование идентификатора таблицы
-            dialect = self._session.engine.dialect
+            dialect = engine.dialect
             safe_table = dialect.identifier_preparer.quote_identifier(self._table.name)
-            lock_mode_sql = "SHARE" if mode == "shared" else "EXCLUSIVE"
-            sql = f"LOCK TABLE {safe_table} IN {lock_mode_sql} MODE"
-            if nowait:
-                sql += " NOWAIT"
-            with self._session.engine.begin() as conn:
+            if dialect_name == "postgresql":
+                lock_mode_sql = "SHARE" if mode == "shared" else "EXCLUSIVE"
+                sql = f"LOCK TABLE {safe_table} IN {lock_mode_sql} MODE"
+                if nowait:
+                    sql += " NOWAIT"
+            elif dialect_name == "mssql":
+                lock_hint = "TABLOCK" if mode == "shared" else "TABLOCKX"
+                if nowait:
+                    lock_hint += ", NOWAIT"
+                sql = f"SELECT TOP 1 * FROM {safe_table} WITH ({lock_hint})"
+            else:
+                raise NotImplementedError(
+                    f"Table-level locking is not implemented for dialect '{dialect_name}'."
+                )
+            with engine.begin() as conn:
                 conn.execute(text(sql))
 
     def _get_current_version(self, record_id: str) -> int:

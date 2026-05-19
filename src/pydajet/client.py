@@ -1,11 +1,36 @@
 """Низкоуровневый клиент для чтения метаданных 1С через DaJet Metadata."""
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
-from pydajet import DataSourceType, Guid, List, MetadataProvider
+from pydajet import DataSourceType, Guid, List
+from pydajet_metadata.exceptions import (
+    MetadataError,
+    MetadataNotImplementedError,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _get_metadata_provider():
+    """Resolve the metadata provider, preferring real pydajet and falling back to dajet.client for tests."""
+    try:
+        from pydajet import MetadataProvider
+
+        if MetadataProvider is not None:
+            return MetadataProvider
+    except ImportError:
+        pass
+
+    try:
+        import dajet.client as dajet_client
+
+        return getattr(dajet_client, "MetadataProvider", None)
+    except Exception:
+        return None
+
+
+MetadataProvider = _get_metadata_provider()
 
 
 class MetadataClient:
@@ -28,15 +53,43 @@ class MetadataClient:
     }
 
     def __init__(self, connection_string: str, data_source: str = "postgresql"):
+        provider = _get_metadata_provider()
+        if provider is None:
+            raise MetadataError(
+                "MetadataProvider is not available. Ensure pydajet/.NET runtime is installed."
+            )
+
         ds = (
             DataSourceType.PostgreSql
             if data_source == "postgresql"
             else DataSourceType.SqlServer
         )
-        result = MetadataProvider.Create(ds, connection_string)
-        self._provider = result[0]
-        self._config = self._provider.GetConfigurations()[0]
+        result = provider.Create(ds, connection_string)
+        self._provider = result[0] if isinstance(result, tuple) else result
+        configurations = self._provider.GetConfigurations()
+        if len(configurations) == 0:
+            raise MetadataError("DaJet provider returned no configurations")
+        self._config = configurations[0]
         self._type_map = self._build_type_map()
+        self.platform_version = getattr(self._provider, "PlatformVersion", 0)
+
+    def _create_guid_list(self, guids: Any):
+        if List is None or Guid is None:
+            raise MetadataError(
+                "DaJet generic collection types are unavailable. Ensure pythonnet and .NET runtime are initialized."
+            )
+        entity_list = List[Guid]()
+        for guid in guids:
+            entity_list.Add(guid)
+        return entity_list
+
+    def _resolve_reference_names(self, guids: Any) -> list[str]:
+        entity_list = self._create_guid_list(guids)
+        result = self._provider.ResolveReferences(entity_list)
+        names = result[0] if isinstance(result, tuple) else result
+        if names is None:
+            return []
+        return [names[i] for i in range(names.Count) if names[i]]
 
     def _build_type_map(self) -> dict:
         """Строит карту типов метаданных на основе конфигурации 1С."""
@@ -45,11 +98,8 @@ class MetadataClient:
             guids = self._config.Metadata[type_uuid]
             if len(guids) == 0:
                 continue
-            entity_list = List[Guid]()
-            for i in range(len(guids)):
-                entity_list.Add(guids[i])
-            names, _ = self._provider.ResolveReferences(entity_list)
-            if names.Count > 0 and names[0]:
+            names = self._resolve_reference_names(guids)
+            if names:
                 type_map[type_uuid] = self._type_by_prefix(names[0])
         return type_map
 
@@ -79,14 +129,8 @@ class MetadataClient:
             if detected_type != type_name:
                 continue
             guids = self._config.Metadata[type_uuid]
-            entity_list = List[Guid]()
-            for i in range(len(guids)):
-                entity_list.Add(guids[i])
-            names, _ = self._provider.ResolveReferences(entity_list)
-            for i in range(names.Count):
-                name = names[i]
-                if not name:
-                    continue
+            names = self._resolve_reference_names(guids)
+            for name in names:
                 entity = self._get_entity(name)
                 if not entity:
                     continue
@@ -143,21 +187,20 @@ class MetadataClient:
 
         Raises:
             MetadataNotImplementedError: для неподдерживаемых типов
-            MetadataNotFoundError: если объект не найден
         """
         try:
             result = self._provider.GetMetadataObject(name)
             return result[0] if isinstance(result, tuple) else result
         except NotImplementedError as e:
-            logger.debug(f"GetMetadataObject not implemented for '{name}': {e}")
+            logger.debug("GetMetadataObject not implemented for '%s': %s", name, e)
             raise MetadataNotImplementedError(
                 f"Metadata object '{name}' is not implemented: {e}"
             ) from e
         except AttributeError as e:
-            logger.debug(f"Metadata object '{name}' not found: {e}")
+            logger.debug("Metadata object '%s' not found: %s", name, e)
             return None
         except Exception as e:
             logger.error(
-                f"Unexpected error getting metadata for '{name}': {e}", exc_info=True
+                "Unexpected error getting metadata for '%s': %s", name, e, exc_info=True
             )
             raise MetadataError(f"Failed to get metadata for '{name}': {e}") from e

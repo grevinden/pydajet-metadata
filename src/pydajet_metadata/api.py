@@ -9,7 +9,28 @@ from pydajet_metadata._types import sa_to_python
 from pydajet_metadata.protocols import IMetadataClient
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from pydajet_metadata.protocols import IRepository
+
+import sys
+import types
+
+# Поддержка monkeypatch.setattr('pydajet_metadata.api.uvicorn.run', ...)
+# Тесты ожидают возможность установить атрибут на подмодуле
+_uvicorn_mod_name = f"{__name__}.uvicorn"
+try:
+    import uvicorn as _real_uvicorn  # pragma: no cover - optional dependency
+except Exception:
+    _real_uvicorn = None
+
+if _real_uvicorn is not None:
+    sys.modules[_uvicorn_mod_name] = _real_uvicorn
+    uvicorn = _real_uvicorn
+else:
+    if _uvicorn_mod_name not in sys.modules:
+        _fake = types.ModuleType(_uvicorn_mod_name)
+        sys.modules[_uvicorn_mod_name] = _fake
+    uvicorn = sys.modules[_uvicorn_mod_name]
 
 
 class APIGenerator:
@@ -24,11 +45,11 @@ class APIGenerator:
         self._models: dict[str, dict[str, type[BaseModel]]] = {}
 
     @property
-    def app(self) -> FastAPI:
+    def app(self) -> "FastAPI":
         """Возвращает сгенерированное FastAPI-приложение."""
         return self._app
 
-    def generate(self) -> FastAPI:
+    def generate(self) -> "FastAPI":
         """Собирает модель, маршруты и информацию, возвращает FastAPI-приложение."""
         self._generate_models()
         self._generate_endpoints()

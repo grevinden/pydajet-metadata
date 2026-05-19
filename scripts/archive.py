@@ -1,97 +1,84 @@
+from __future__ import annotations
+
 import shutil
 import sys
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import Iterable
+
+from scripts.build_tools.logging_utils import get_logger
+
+logger = get_logger("archive")
 
 
-class ArchiveExtractor :
-	"""
-    Универсальный распаковщик.
-    - ZIP: Распаковывает структуру 'как есть' (без обрезки корней).
-    - TAR.GZ: Если в корне одна папка, она автоматически обрезается.
+class ArchiveExtractor:
+    """
+    Универсальный распаковщик архивов.
+
+    Правила:
+    - ZIP: распаковывается как есть.
+    - TAR.GZ: если в корне одна общая папка-обёртка, она отбрасывается.
     """
 
-	def __init__ ( self , archive_path: Path , dest_path: Path ) -> None :
-		self.archive_path = archive_path.resolve ( )
-		self.dest_path = dest_path.resolve ( )
+    def __init__(self, archive_path: Path, dest_path: Path) -> None:
+        self.archive_path = Path(archive_path).resolve()
+        self.dest_path = Path(dest_path).resolve()
 
-		if not self.archive_path.exists ( ) :
-			raise FileNotFoundError ( f"❌ Архив не найден: {self.archive_path}" )
+        if not self.archive_path.exists():
+            raise FileNotFoundError(f"Архив не найден: {self.archive_path}")
 
-		# Корректное определение составных расширений (.tar.gz, .tar.bz2 и т.д.)
-		self.suffix = "".join ( self.archive_path.suffixes ).lower ( )
+        self.suffix = "".join(self.archive_path.suffixes).lower()
 
-	def extract_all ( self ) -> None :
-		"""Запускает процесс распаковки."""
-		if self.dest_path.exists ( ) :
-			shutil.rmtree ( self.dest_path , ignore_errors = True )
-		self.dest_path.mkdir ( parents = True , exist_ok = True )
+    def extract_all(self) -> None:
+        logger.info("Extracting archive %s -> %s", self.archive_path, self.dest_path)
+        if self.dest_path.exists():
+            shutil.rmtree(self.dest_path, ignore_errors=True)
+        self.dest_path.mkdir(parents=True, exist_ok=True)
 
-		if self.suffix == '.zip' :
-			self._extract_zip ( )
-		elif self.suffix == '.tar.gz' :
-			self._extract_tar_gz ( )
-		else :
-			raise ValueError ( f"❌ Неподдерживаемый формат: {self.suffix}" )
+        if self.suffix == ".zip":
+            self._extract_zip()
+        elif self.suffix == ".tar.gz":
+            self._extract_tar_gz()
+        else:
+            raise ValueError(f"Unsupported archive format: {self.suffix}")
 
-	# =========================================================================
-	# ZIP: Распаковка БЕЗ обрезки (как есть)
-	# =========================================================================
-	def _extract_zip ( self ) -> None :
-		with zipfile.ZipFile ( self.archive_path ) as zf :
-			zf.extractall ( path= self.dest_path )
+    def _extract_zip(self) -> None:
+        with zipfile.ZipFile(self.archive_path) as archive:
+            archive.extractall(path=self.dest_path)
 
-	# =========================================================================
-	# TAR.GZ: Умная обрезка корня
-	# =========================================================================
-	def _extract_tar_gz ( self ) -> None :
-		with tarfile.open ( self.archive_path , 'r:*' ) as tf :
-			members = tf.getmembers ( )
-			if not members :
-				return
+    def _extract_tar_gz(self) -> None:
+        with tarfile.open(self.archive_path, "r:*") as archive:
+            members = archive.getmembers()
+            if not members:
+                logger.warning("Archive %s is empty", self.archive_path)
+                return
 
-			# Проверяем, нужно ли обрезать корень
-			root_prefix = self._get_single_root_prefix ( members )
+            root_prefix = self._get_single_root_prefix(members)
+            members_to_extract = self._trim_root_prefix(members, root_prefix) if root_prefix else members
 
-			if root_prefix :
-				processed = [ ]
-				prefix_len = len ( root_prefix )
-				for m in members :
-					# Пропускаем саму корневую папку
-					if m.name == root_prefix or m.name == f"{root_prefix}/" :
-						continue
+            kwargs = {"path": str(self.dest_path), "members": members_to_extract}
+            if sys.version_info >= (3, 12):
+                kwargs["filter"] = "data"
+            archive.extractall(**kwargs)
 
-					if m.name.startswith ( root_prefix ) :
-						m.name = m.name [ prefix_len : ]
-						# В tar директории должны заканчиваться на '/'
-						if m.isdir ( ) and not m.name.endswith ( "/" ) :
-							m.name += "/"
-						processed.append ( m )
-				members_to_extract = processed
-			else :
-				# Плоский архив или несколько корней -> без обрезки
-				members_to_extract = members
+    def _trim_root_prefix(self, members: list[tarfile.TarInfo], root_prefix: str) -> list[tarfile.TarInfo]:
+        processed: list[tarfile.TarInfo] = []
+        prefix_len = len(root_prefix)
+        for member in members:
+            if member.name in {root_prefix, f"{root_prefix}/"}:
+                continue
+            if member.name.startswith(root_prefix):
+                cloned = member.replace(deep=False)
+                cloned.name = member.name[prefix_len:]
+                if cloned.isdir() and not cloned.name.endswith("/"):
+                    cloned.name += "/"
+                processed.append(cloned)
+        return processed
 
-			kwargs = { "path" : str ( self.dest_path ) , "members" : members_to_extract }
-			if sys.version_info >= (3 , 12) :
-				kwargs [ "filter" ] = "data"
-			tf.extractall ( **kwargs )
-
-	# =========================================================================
-	# УТИЛИТЫ
-	# =========================================================================
-	@staticmethod
-	def _get_single_root_prefix ( members: List [ tarfile.TarInfo ] ) -> str :
-		"""Возвращает имя корневой папки с '/', если в архиве ровно один корневой элемент."""
-		roots = set ( )
-		for m in members :
-			if m.name :
-				# Берём первый компонент пути (до первого '/')
-				roots.add ( m.name.split ( "/" ) [ 0 ] )
-
-		# Если ровно один корневой элемент → это папка-обёртка
-		if len ( roots ) == 1 :
-			return roots.pop ( ) + "/"
-		return ""
+    @staticmethod
+    def _get_single_root_prefix(members: Iterable[tarfile.TarInfo]) -> str:
+        roots = {member.name.split("/")[0] for member in members if member.name}
+        if len(roots) == 1:
+            return f"{roots.pop()}/"
+        return ""

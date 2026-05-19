@@ -6,7 +6,7 @@ from pydajet_metadata.exceptions import MetadataOutdatedError
 from pydajet_metadata.repository import Repository, TypeAccessor
 
 
-@pytest.fixture(autouse=True, scope='session')
+@pytest.fixture(autouse=True, scope='module')
 def mock_pydajet():
     """Подменяет pydajet на моки, чтобы избежать импорта .NET."""
     # Если pydajet ещё не загружен (тесты без .NET), подменяем

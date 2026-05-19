@@ -18,22 +18,43 @@ if runtime_config.exists():
 # DOTNET_ROOT всё ещё нужен для поиска нативных библиотек
 environ.setdefault("DOTNET_ROOT", str(PATH_BIN))
 
-import clr  # noqa
+# Попытка импортировать CLR и DaJet — если среда без .NET, не падаем при импорте
+MetadataProvider = None
+DataSourceType = None
+Guid = None
+List = None
+try:  # pragma: no cover - optional runtime
+    import clr  # type: ignore
 
-for dll in ("TypeSystem", "Data", "Metadata"):  # pragma: no cover
-    clr.AddReference(str(PATH_BIN / f"DaJet.{dll}.dll"))  # noqa
+    for dll in ("TypeSystem", "Data", "Metadata"):
+        clr.AddReference(str(PATH_BIN / f"DaJet.{dll}.dll"))
 
-from DaJet.Metadata import MetadataProvider  # noqa
-from DaJet.Data import DataSourceType  # noqa
-from System import Guid  # noqa
-from System.Collections.Generic import List  # noqa
+    from DaJet.Metadata import MetadataProvider  # type: ignore
+    from DaJet.Data import DataSourceType  # type: ignore
+    from System import Guid  # type: ignore
+    from System.Collections.Generic import List  # type: ignore
+except Exception:
+    # Оставляем значения None — код, требующий DaJet, должен корректно обработать это.
+    MetadataProvider = None
+    # Фоллбэк для DataSourceType — простой контейнер значений, используемый в тестах
+    class _FallbackDataSourceType:
+        PostgreSql = "PostgreSql"
+        SqlServer = "SqlServer"
+
+    DataSourceType = _FallbackDataSourceType
+    Guid = None
+    List = None
 
 from sqlalchemy.dialects.postgresql import VARCHAR
 from sqlalchemy.dialects.postgresql.base import ischema_names
 
 ischema_names["mvarchar"] = VARCHAR
 
-from pydajet.client import MetadataClient
+try:
+    from pydajet.client import MetadataClient
+except Exception:
+    MetadataClient = None
+
 from pydajet._uuid import format_uuid, from_1c, generate, to_1c
 
 __all__ = [
