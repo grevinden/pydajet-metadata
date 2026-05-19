@@ -126,7 +126,7 @@ class Query:
     def _pk_condition(self, record_id: str) -> Any:
         if self._pk in self._table.c:
             return self._table.c[self._pk] == to_1c(record_id)
-        return text(self._pk) == to_1c(record_id)
+        return text(f"{self._pk} = :pk").bindparams(pk=to_1c(record_id))
 
     def _pk_column(self) -> Any:
         if self._pk in self._table.c:

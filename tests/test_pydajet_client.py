@@ -151,11 +151,13 @@ def test_get_entity_exceptions():
 
 
 def test_find_binary_folder(monkeypatch):
-    import importlib
+    import importlib.util
+    from pathlib import Path
 
-    sys.modules.pop('pydajet', None)
-    sys.modules.pop('pydajet._platform', None)
-    platform_mod = importlib.import_module('pydajet._platform')
+    platform_path = Path(__file__).resolve().parents[1] / "src" / "pydajet" / "_platform.py"
+    spec = importlib.util.spec_from_file_location("pydajet._platform", str(platform_path))
+    platform_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(platform_mod)
 
     monkeypatch.setattr(platform_mod.platform, "system", lambda: "Windows")
     monkeypatch.setattr(platform_mod.platform, "machine", lambda: "AMD64")
@@ -182,6 +184,7 @@ def test_pydajet_package_import_without_dotnet(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'clr', fake_clr)
 
     dajet_module = types.ModuleType('DaJet')
+    dajet_module.__path__ = []
     monkeypatch.setitem(sys.modules, 'DaJet', dajet_module)
 
     dajet_metadata = types.ModuleType('DaJet.Metadata')
@@ -193,19 +196,29 @@ def test_pydajet_package_import_without_dotnet(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, 'DaJet.Data', dajet_data)
 
     system_module = types.ModuleType('System')
+    system_module.__path__ = []
     system_module.Guid = int
     monkeypatch.setitem(sys.modules, 'System', system_module)
+
+    system_collections = types.ModuleType('System.Collections')
+    system_collections.__path__ = []
+    monkeypatch.setitem(sys.modules, 'System.Collections', system_collections)
 
     system_generic = types.ModuleType('System.Collections.Generic')
     system_generic.List = list
     monkeypatch.setitem(sys.modules, 'System.Collections.Generic', system_generic)
 
-    # Ensure fresh import without interference from previous tests
-    for name in ['pydajet', 'pydajet.client', 'pydajet._platform', 'pydajet._uuid']:
-        sys.modules.pop(name, None)
+    from pathlib import Path
+    import importlib.util
 
-    import importlib
-    pydajet_pkg = importlib.import_module('pydajet')
+    init_path = Path(__file__).resolve().parents[1] / "src" / "pydajet" / "__init__.py"
+    spec = importlib.util.spec_from_file_location("pydajet", str(init_path))
+    pydajet_pkg = importlib.util.module_from_spec(spec)
+    pydajet_pkg.__path__ = [str(init_path.parent)]
+    monkeypatch.setitem(sys.modules, 'pydajet', pydajet_pkg)
+
+    spec.loader.exec_module(pydajet_pkg)
+
     assert pydajet_pkg.PATH_BIN == fake_binary_folder
     assert hasattr(pydajet_pkg, 'MetadataClient')
     assert pydajet_pkg.DataSourceType.PostgreSql == 1
