@@ -10,3 +10,7 @@ build
 .venv/
 .idea/
 .vscode/
+.skales-backup/
+htmlcov/
+pytest_failures.txt
+.dajet_cache/

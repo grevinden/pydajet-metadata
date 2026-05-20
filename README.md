@@ -72,6 +72,21 @@ uv add pydajet-metadata
 uv add --dev pytest pytest-asyncio pytest-cov pytest-mock hypothesis httpx mypy
 ```
 
+### Кэш (cashews)
+
+Параметры читаются через **pydantic-settings** с префиксом `PYDAJET_` (файл `.env` поддерживается):
+
+| Переменная | По умолчанию | Назначение |
+|------------|--------------|------------|
+| `PYDAJET_CACHE_ENABLED` | `true` | Включить кэш |
+| `PYDAJET_CACHE_URL` | `mem://?size=10000` | Бэкенд cashews (`mem://`, `redis://…`) |
+| `PYDAJET_CACHE_PREFIX` | `""` | Префикс ключей |
+| `PYDAJET_CACHE_TTL_METADATA` | `3600` | TTL `list_types` / `list_objects` / root GUID (сек) |
+| `PYDAJET_CACHE_TTL_SCHEMA` | `1800` | TTL `reflect_table` / `get_pk` (сек) |
+| `PYDAJET_CACHE_TTL_ROOT_GUID` | `300` | TTL чтения `_Config._FileName` (сек) |
+
+Кэшируются дорогие вызовы DaJet (`list_objects`) и отражение схемы БД; `Repository.refresh_metadata()` сбрасывает теги `metadata:{scope}` и `schema:{scope}` для строки подключения.
+
 ---
 
 ## Быстрый старт
@@ -147,6 +162,12 @@ repo = Repository(client=client, session=session)
 
 print(repo.types())
 print(repo.objects('Справочники'))
+
+repo_sqlserver = Repository(
+    "Server=localhost;Database=TestDB;UID=test;PWD=test;",
+    data_source="sqlserver",
+)
+print(repo_sqlserver.types())
 ```
 
 ### Query
@@ -319,7 +340,7 @@ tests/
 
 ```bash
 uv run pytest tests/ -q
-uv run mypy src/pydajet_metadata --strict
+uv run mypy
 uv run pytest tests/ --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=term-missing
 ```
 
@@ -327,8 +348,8 @@ uv run pytest tests/ --cov=src/pydajet --cov=src/pydajet_metadata --cov-report=t
 
 ## Текущее состояние
 
-- `242 passed, 2 skipped`
-- `96%` покрытие по `src/pydajet` и `src/pydajet_metadata`
+- `255 passed, 1 skipped` (локальный прогон `uv run pytest tests/ -q`)
+- ~`90%` покрытие по `src/pydajet` и `src/pydajet_metadata` (см. отчёт `htmlcov/` после pytest с cov)
 
 ## Миграция
 
@@ -360,6 +381,7 @@ class Analyzer:
 ## Полезные ссылки
 
 - `pyproject.toml` — зависимости и сборка
+- `stubs/` — локальные mypy-stubs для pythonnet/DaJet (поддерживаются этим репозиторием)
 - `tests/` — тесты и фикстуры
 - `src/pydajet_metadata/protocols.py` — контракты DI
 - `src/pydajet_metadata/repository.py` — основной репозиторий

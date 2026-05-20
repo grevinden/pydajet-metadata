@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Literal
 
-from pydajet_metadata.protocols import IAsyncQuery
+from sqlalchemy.sql.schema import Column, Table
+
+from pydajet_metadata._sql_types import SqlWhereClause
+from pydajet_metadata.protocols import ColumnMap, IAsyncQuery, RowDict
 from pydajet_metadata.query import Query
 
 
 class AsyncQuery(IAsyncQuery):
     """Асинхронная оболочка для синхронного Query."""
 
-    def __init__(self, query: Query):
+    def __init__(self, query: Query) -> None:
         self._query = query
 
     @property
-    def _table(self) -> Any:
+    def _table(self) -> Table:
         return self._query._table
 
     @property
@@ -26,30 +29,30 @@ class AsyncQuery(IAsyncQuery):
         return self._query._owner_key
 
     @property
-    def _children(self) -> Dict[str, "AsyncQuery"]:
-        return self._query._children
+    def _children(self) -> dict[str, IAsyncQuery]:
+        return {name: AsyncQuery(child) for name, child in self._query._children.items()}
 
     @property
-    def _column_map(self) -> Any:
+    def _column_map(self) -> ColumnMap:
         return self._query._column_map
 
-    async def all(self) -> List[Dict[str, Any]]:
+    async def all(self) -> list[RowDict]:
         return await asyncio.to_thread(self._query.all)
 
-    async def first(self) -> Optional[Dict[str, Any]]:
+    async def first(self) -> RowDict | None:
         return await asyncio.to_thread(self._query.first)
 
     async def count(self) -> int:
         return await asyncio.to_thread(self._query.count)
 
-    def where(self, *conditions: Any) -> "AsyncQuery":
+    def where(self, *conditions: SqlWhereClause) -> AsyncQuery:
         self._query.where(*conditions)
         return self
 
-    async def insert(self, data: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> str:
+    async def insert(self, data: RowDict, extra: RowDict | None = None) -> str:
         return await asyncio.to_thread(self._query.insert, data, extra)
 
-    async def update(self, record_id: str, data: Dict[str, Any]) -> bool:
+    async def update(self, record_id: str, data: RowDict) -> bool:
         return await asyncio.to_thread(self._query.update, record_id, data)
 
     async def delete(self, record_id: str) -> bool:
@@ -57,8 +60,8 @@ class AsyncQuery(IAsyncQuery):
 
     async def lock(
         self,
-        mode: str = "exclusive",
-        row_id: Optional[str] = None,
+        mode: Literal["exclusive", "shared"] = "exclusive",
+        row_id: str | None = None,
         nowait: bool = False,
     ) -> None:
         await asyncio.to_thread(self._query.lock, mode, row_id, nowait)
@@ -66,16 +69,18 @@ class AsyncQuery(IAsyncQuery):
     async def Изменить(
         self,
         record_id: str,
-        data: Dict[str, Any],
-        expected_version: Optional[int] = None,
+        data: RowDict,
+        expected_version: int | None = None,
     ) -> bool:
-        return await asyncio.to_thread(self._query.Изменить, record_id, data, expected_version)
+        return await asyncio.to_thread(
+            self._query.Изменить, record_id, data, expected_version
+        )
 
-    async def БезопасноеИзменить(self, record_id: str, data: Dict[str, Any]) -> bool:
+    async def БезопасноеИзменить(self, record_id: str, data: RowDict) -> bool:
         return await asyncio.to_thread(self._query.БезопасноеИзменить, record_id, data)
 
     async def ПолучитьВерсию(self, record_id: str) -> int:
         return await asyncio.to_thread(self._query.ПолучитьВерсию, record_id)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         return getattr(self._query, name)

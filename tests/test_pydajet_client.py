@@ -12,6 +12,10 @@ class FakeList(list):
     def __init__(self):
         super().__init__()
 
+    @classmethod
+    def __class_getitem__(cls, item: type) -> type["FakeList"]:
+        return cls
+
     @property
     def Count(self):
         return len(self)
@@ -108,7 +112,15 @@ def import_client_with_fakes():
     import importlib.util
     from pathlib import Path
 
-    client_path = Path(__file__).resolve().parents[1] / "src" / "pydajet" / "client.py"
+    src_pydajet = Path(__file__).resolve().parents[1] / "src" / "pydajet"
+    dotnet_path = src_pydajet / "_dotnet.py"
+    spec_d = importlib.util.spec_from_file_location("pydajet._dotnet", str(dotnet_path))
+    mod_d = importlib.util.module_from_spec(spec_d)
+    sys.modules["pydajet._dotnet"] = mod_d
+    assert spec_d.loader is not None
+    spec_d.loader.exec_module(mod_d)
+
+    client_path = src_pydajet / "client.py"
     spec = importlib.util.spec_from_file_location("pydajet.client", str(client_path))
     mod = importlib.util.module_from_spec(spec)
     sys.modules["pydajet.client"] = mod

@@ -1,0 +1,13 @@
+"""Stub: DaJet.Metadata (используется pydajet.MetadataClient)."""
+
+class MetadataProvider:
+    PlatformVersion: int
+
+    @staticmethod
+    def Create(data_source: object, connection_string: str) -> object: ...
+
+    def GetConfigurations(self) -> object: ...
+
+    def ResolveReferences(self, entity_list: object) -> object: ...
+
+    def GetMetadataObject(self, name: str) -> object: ...

@@ -56,3 +56,14 @@ class TestSession:
         session._engine.dispose = MagicMock()
         session.close()
         session._engine.dispose.assert_called_once()
+
+    @patch('pydajet_metadata.session.inspect')
+    @patch('pydajet_metadata.session.create_engine')
+    def test_init_creates_sqlserver_engine(self, mock_engine, mock_inspect):
+        sqlserver_cs = (
+            "Server=localhost;Database=TestDB;UID=test;PWD=test;"
+            "Driver=ODBC Driver 18 for SQL Server;"
+        )
+        session = Session(sqlserver_cs, data_source="sqlserver")
+        mock_engine.assert_called_once()
+        assert "mssql+pyodbc:///?odbc_connect=" in mock_engine.call_args[0][0]

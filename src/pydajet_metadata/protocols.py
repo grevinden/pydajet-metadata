@@ -8,20 +8,24 @@ PEP 544: Protocols позволяют использовать duck-typing со 
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from typing import (
-    Any,
-    AsyncIterator,
+    AsyncContextManager,
     Dict,
     Iterator,
     List,
+    Literal,
     Optional,
     Protocol,
     Sequence,
     Tuple,
-    Literal,
     runtime_checkable,
 )
+
+from pydajet_metadata._metadata_types import MetadataObject
+from pydajet_metadata._sql_types import DbRow, SqlColumn, SqlWhereClause
+from sqlalchemy.engine import Engine
+from sqlalchemy.sql.schema import Table
 
 
 # ─── Type Aliases ────────────────────────────────────────────────────────────
@@ -30,7 +34,7 @@ ConnectionString = str  # "Host=...;Port=...;Database=...;..."
 TableName = str  # "_Reference53"
 HumanName = str  # "Наименование"
 DbColumnName = str  # "_Description"
-RowDict = Dict[str, Any]  # Строка БД как словарь
+RowDict = Dict[str, object]  # Строка БД в человекочитаемых именах колонок
 ColumnMap = Dict[HumanName, DbColumnName]  # Маппинг имён колонок
 
 
@@ -41,11 +45,11 @@ class ISession(Protocol):
     """Интерфейс подключения к БД и управления транзакциями."""
 
     @property
-    def engine(self) -> Any:
-        """SQLAlchemy Engine или активное Connection."""
+    def engine(self) -> Engine:
+        """SQLAlchemy Engine."""
         ...
 
-    def reflect_table(self, table_name: str) -> Any:
+    def reflect_table(self, table_name: str) -> Table:
         """Рефлектирует таблицу БД в SQLAlchemy Table."""
         ...
 
@@ -72,15 +76,15 @@ class ISession(Protocol):
 class IColumnMapper(Protocol):
     """Интерфейс маппинга имён и значений колонок human ↔ db."""
 
-    def human_to_db(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def human_to_db(self, data: RowDict) -> dict[str, object]:
         """Преобразует {human_name: value} → {db_name: value}."""
         ...
 
-    def db_to_human(self, row: Any) -> Dict[str, Any]:
+    def db_to_human(self, row: DbRow) -> RowDict:
         """Преобразует строку БД → {human_name: value}."""
         ...
 
-    def get_db_column(self, human_name: str) -> Any:
+    def get_db_column(self, human_name: str) -> SqlColumn:
         """Возвращает SQLAlchemy Column по человеческому имени."""
         ...
 
@@ -101,7 +105,7 @@ class IQuery(Protocol):
 
     # ─── Properties ──────────────────────────────────────────────────────
     @property
-    def _table(self) -> Any:
+    def _table(self) -> Table:
         """SQLAlchemy Table."""
         ...
 
@@ -138,16 +142,16 @@ class IQuery(Protocol):
         """Возвращает количество строк."""
         ...
 
-    def where(self, *conditions: Any) -> IQuery:
+    def where(self, *conditions: SqlWhereClause) -> IQuery:
         """Добавляет WHERE-условия и возвращает self."""
         ...
 
     # ─── Write ───────────────────────────────────────────────────────────
-    def insert(self, data: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> UUIDString:
+    def insert(self, data: RowDict, extra: Optional[RowDict] = None) -> UUIDString:
         """Вставляет запись и возвращает UUID."""
         ...
 
-    def update(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+    def update(self, record_id: UUIDString, data: RowDict) -> bool:
         """Обновляет запись по UUID. Возвращает True если изменена."""
         ...
 
@@ -168,13 +172,13 @@ class IQuery(Protocol):
     def Изменить(
         self,
         record_id: UUIDString,
-        data: Dict[str, Any],
+        data: RowDict,
         expected_version: Optional[int] = None,
     ) -> bool:
         """Обновляет с оптимистичной блокировкой по _Version."""
         ...
 
-    def БезопасноеИзменить(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+    def БезопасноеИзменить(self, record_id: UUIDString, data: RowDict) -> bool:
         """Безопасное обновление с автоматической проверкой версии."""
         ...
 
@@ -188,7 +192,7 @@ class IAsyncQuery(Protocol):
     """Асинхронный интерфейс построителя запросов к таблицам 1С."""
 
     @property
-    def _table(self) -> Any:
+    def _table(self) -> Table:
         ...
 
     @property
@@ -216,13 +220,13 @@ class IAsyncQuery(Protocol):
     async def count(self) -> int:
         ...
 
-    def where(self, *conditions: Any) -> "IAsyncQuery":
+    def where(self, *conditions: SqlWhereClause) -> "IAsyncQuery":
         ...
 
-    async def insert(self, data: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> UUIDString:
+    async def insert(self, data: RowDict, extra: Optional[RowDict] = None) -> UUIDString:
         ...
 
-    async def update(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+    async def update(self, record_id: UUIDString, data: RowDict) -> bool:
         ...
 
     async def delete(self, record_id: UUIDString) -> bool:
@@ -239,15 +243,29 @@ class IAsyncQuery(Protocol):
     async def Изменить(
         self,
         record_id: UUIDString,
-        data: Dict[str, Any],
+        data: RowDict,
         expected_version: Optional[int] = None,
     ) -> bool:
         ...
 
-    async def БезопасноеИзменить(self, record_id: UUIDString, data: Dict[str, Any]) -> bool:
+    async def БезопасноеИзменить(self, record_id: UUIDString, data: RowDict) -> bool:
         ...
 
     async def ПолучитьВерсию(self, record_id: UUIDString) -> int:
+        ...
+
+
+@runtime_checkable
+class ITypeAccessor(Protocol):
+    """Доступ к объектам одного типа метаданных: repo.Справочники.Контрагенты."""
+
+    def list(self) -> List[str]:
+        ...
+
+    def __getitem__(self, object_name: str) -> "IQuery":
+        ...
+
+    def __getattr__(self, object_name: str) -> "IQuery":
         ...
 
 
@@ -256,21 +274,19 @@ class IAsyncSession(Protocol):
     """Асинхронный интерфейс подключения к БД и управления транзакциями."""
 
     @property
-    def engine(self) -> Any:
+    def engine(self) -> Engine:
         ...
 
-    async def reflect_table(self, table_name: str) -> Any:
+    async def reflect_table(self, table_name: str) -> Table:
         ...
 
     async def get_pk(self, table_name: str) -> str:
         ...
 
-    @asynccontextmanager
-    async def transaction(self) -> AsyncIterator["IAsyncSession"]:
+    def transaction(self) -> AsyncContextManager["IAsyncSession"]:
         ...
 
-    @asynccontextmanager
-    async def savepoint(self) -> AsyncIterator["IAsyncSession"]:
+    def savepoint(self) -> AsyncContextManager["IAsyncSession"]:
         ...
 
     async def close(self) -> None:
@@ -311,7 +327,7 @@ class IAsyncRepository(Protocol):
     async def close(self) -> None:
         ...
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> ITypeAccessor:
         ...
 
 
@@ -326,7 +342,7 @@ class IAsyncMetadataClient(Protocol):
     async def list_types(self) -> List[str]:
         ...
 
-    async def list_objects(self, type_name: str) -> List[Dict[str, Any]]:
+    async def list_objects(self, type_name: str) -> List[MetadataObject]:
         ...
 
 
@@ -343,7 +359,7 @@ class IMetadataClient(Protocol):
         """Возвращает список типов метаданных (Справочники, Документы, ...)."""
         ...
 
-    def list_objects(self, type_name: str) -> List[Dict[str, Any]]:
+    def list_objects(self, type_name: str) -> List[MetadataObject]:
         """Возвращает список объектов типа с метаданными (table, properties, children)."""
         ...
 
@@ -391,6 +407,6 @@ class IRepository(Protocol):
         """Закрывает репозиторий и сессию."""
         ...
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> ITypeAccessor:
         """Доступ к TypeAccessor: repo.Справочники.Контрагенты."""
         ...

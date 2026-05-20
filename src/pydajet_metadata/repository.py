@@ -1,14 +1,27 @@
 """Репозиторий объектов 1С."""
 
-from typing import TYPE_CHECKING, Any, Callable
+from __future__ import annotations
 
+from typing import Callable, cast
+from unittest.mock import Mock
+
+from pydajet_metadata._metadata_types import MetadataObject
+from pydajet_metadata._sql_types import SqlExecutable
+from pydajet_metadata._cache import (
+    cache_get_or_set,
+    cache_scope_key,
+    invalidate_cache_scope,
+    metadata_tag,
+)
+from pydajet_metadata.exceptions import MetadataError, MetadataOutdatedError
+from pydajet_metadata.settings import get_settings
+from pydajet_metadata.protocols import IMetadataClient, IQuery, ISession, ITypeAccessor
 from pydajet_metadata.query import Query
 from pydajet_metadata.session import Session
 
-MetadataClient: Any | None = None
-
-if TYPE_CHECKING:
-    from pydajet_metadata.protocols import IMetadataClient, IRepository, ISession
+_metadata_client_cls: type | None
+# Ленивая загрузка и точка patch для тестов: pydajet_metadata.repository.MetadataClient
+MetadataClient: type | None = None
 
 
 class Repository:  # Структурно соответствует IRepository
@@ -17,9 +30,9 @@ class Repository:  # Структурно соответствует IRepository
         connection_string: str | None = None,
         data_source: str = "postgresql",
         *,
-        client: "IMetadataClient | None" = None,
-        session: "ISession | None" = None,
-        client_factory: Callable[[str, str], "IMetadataClient"] | None = None,
+        client: IMetadataClient | None = None,
+        session: ISession | None = None,
+        client_factory: Callable[[str, str], IMetadataClient] | None = None,
     ):
         """Создаёт Repository для метаданных 1С.
 
@@ -33,7 +46,6 @@ class Repository:  # Структурно соответствует IRepository
         Raises:
             ValueError: если не заданы connection_string и client/session.
         """
-        # Поддержка DI через протоколы (приоритет) или создание внутри
         if client is not None:
             self._client = client
         elif client_factory is not None:
@@ -44,88 +56,103 @@ class Repository:  # Структурно соответствует IRepository
             self._client = client_factory(connection_string, data_source)
         else:
             if not connection_string:
-                raise ValueError("connection_string is required when client is not provided")
+                raise ValueError(
+                    "connection_string is required when client is not provided"
+                )
             self._client = self._create_default_client(connection_string, data_source)
 
         if session is not None:
             self._session = session
         else:
             if not connection_string:
-                raise ValueError("connection_string is required when session is not provided")
-            self._session = Session(connection_string)
+                raise ValueError(
+                    "connection_string is required when session is not provided"
+                )
+            self._session = Session(connection_string, data_source)
 
         self._queries: dict[str, dict[str, Query]] = {}
-
-        # Сохраняем идентификатор версии метаданных
+        scope_cs = connection_string or ""
+        self._cache_scope = cache_scope_key(scope_cs, data_source) if scope_cs else ""
         self._root_guid = self._get_root_guid()
-        self._metadata_version = getattr(self._client, 'platform_version', 0)
+        self._metadata_version = getattr(self._client, "platform_version", 0)
 
         self._build()
 
     @staticmethod
-    def _create_default_client(connection_string: str, data_source: str) -> "IMetadataClient":
+    def _create_default_client(
+        connection_string: str, data_source: str
+    ) -> IMetadataClient:
         """
         Ленивый импорт клиента метаданных, чтобы пакет
         pydajet_metadata не зависел от pydajet на этапе загрузки.
         """
-        if MetadataClient is not None:
-            return MetadataClient(connection_string, data_source)
+        global MetadataClient
+        client_cls = MetadataClient
+        if client_cls is None:
+            import importlib
 
-        import importlib
-
-        pydajet_client = importlib.import_module("pydajet.client")
-        return pydajet_client.MetadataClient(connection_string, data_source)
+            pydajet_client = importlib.import_module("pydajet.client")
+            client_cls = getattr(pydajet_client, "MetadataClient", None)
+            MetadataClient = client_cls
+        if client_cls is None:
+            raise MetadataError(
+                "MetadataClient is not available. Ensure pydajet is installed."
+            )
+        return cast(IMetadataClient, client_cls(connection_string, data_source))
 
     def _build(self) -> None:
+        self._queries = {}
+
         for type_name in self._client.list_types():
             self._queries[type_name] = {}
-            # Support mocks where list_objects may have a side_effect but tests
-            # override return_value; in such case prefer the explicit return_value.
             list_objects_callable = getattr(self._client, "list_objects")
-            try:
-                from unittest.mock import Mock as _Mock
-            except Exception:
-                _Mock = None
-
-            if _Mock is not None and isinstance(list_objects_callable, _Mock):
+            if isinstance(list_objects_callable, Mock):
                 rv = getattr(list_objects_callable, "return_value", None)
-                # Prefer explicit iterable return_value set in tests (list/tuple/set).
-                if isinstance(rv, (list, tuple, set)):
-                    objs = rv
+                if isinstance(rv, list):
+                    objs: list[MetadataObject] = rv
+                elif isinstance(rv, tuple):
+                    objs = list(rv)
+                elif isinstance(rv, set):
+                    objs = list(rv)
                 else:
                     objs = list_objects_callable(type_name)
             else:
                 objs = list_objects_callable(type_name)
 
             for obj in objs:
-                column_map = {}
+                column_map: dict[str, str] = {}
                 pk = "_idrref"
-                for prop in obj["properties"]:
-                    if prop["columns"]:
-                        db_name = prop["columns"][0]["name"]
+                for prop in obj.get("properties", []):
+                    columns = prop.get("columns") or []
+                    if columns:
+                        db_name = columns[0]["name"]
                         column_map[prop["name"]] = db_name
                         if db_name.lower() in ("_idrref", "_recordkey"):
                             pk = db_name.lower()
 
                 table_name = obj["table"]
                 pk = self._session.get_pk(table_name) or pk
-
                 query = Query(self._session, table_name, column_map, pk)
 
-                for child in obj["children"]:
-                    child_map = {}
+                for child in obj.get("children", []):
+                    child_map: dict[str, str] = {}
                     child_pk = "_idrref"
                     child_owner = "_idrref"
-                    for prop in child["properties"]:
-                        if prop["columns"]:
-                            db_name = prop["columns"][0]["name"]
+
+                    for prop in child.get("properties", []):
+                        columns = prop.get("columns") or []
+                        if columns:
+                            db_name = columns[0]["name"]
                             child_map[prop["name"]] = db_name
-                            if db_name.lower() in ("_idrref", "_recordkey"):
-                                child_pk = db_name.lower()
                             lname = db_name.lower()
-                            # Detect typical owner/ref columns: *_rref, *_owner, *_rref_owner
+                            if lname in ("_idrref", "_recordkey"):
+                                child_pk = lname
                             if (
-                                (lname.endswith("_rref") or lname.endswith("_owner") or lname.endswith("_rref_owner"))
+                                (
+                                    lname.endswith("_rref")
+                                    or lname.endswith("_owner")
+                                    or lname.endswith("_rref_owner")
+                                )
                                 and lname != child_pk
                             ):
                                 child_owner = lname
@@ -158,13 +185,13 @@ class Repository:  # Структурно соответствует IRepository
             raise KeyError(f"Object '{object_name}' not found in '{type_name}'")
         return self._queries[type_name][object_name]
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> ITypeAccessor:
         if name in self._queries:
             return TypeAccessor(self, name)
         raise AttributeError(f"Type '{name}' not found")
 
     @property
-    def session(self) -> "ISession":
+    def session(self) -> ISession:
         """Возвращает активную сессию базы данных."""
         return self._session
 
@@ -173,76 +200,100 @@ class Repository:  # Структурно соответствует IRepository
         """Текущая версия метаданных клиента."""
         return self._metadata_version
 
+    @property
+    def root_guid(self) -> str:
+        """Текущий корневой GUID конфигурации."""
+        return self._root_guid
+
     def close(self) -> None:
         """Закрывает хранилище и освобождает ресурсы сессии."""
         self._session.close()
 
     def _get_root_guid(self) -> str:
-        """
-        Получает корневой GUID конфигурации.
-        """
+        """Получает корневой GUID конфигурации."""
+        if not self._cache_scope:
+            return self._fetch_root_guid()
+        settings = get_settings()
+        return cache_get_or_set(
+            scope=self._cache_scope,
+            category="metadata",
+            suffix="root_guid",
+            ttl=settings.cache_ttl_root_guid,
+            tags=(metadata_tag(self._cache_scope),),
+            factory=self._fetch_root_guid,
+        )
+
+    def _fetch_root_guid(self) -> str:
         try:
             from sqlalchemy import select, text
 
             config_table = self._session.reflect_table("_Config")
+            stmt: SqlExecutable
             try:
-                stmt = select(config_table.c._FileName)
+                stmt = select(config_table.c._FileName).limit(1)
             except Exception:
-                # В тестах часто используется Mock для таблицы, который
-                # не поддерживает SQLAlchemy API. В этом случае выполняем
-                # простейший текстовый запрос — он попадёт в мок engine.execute
                 stmt = text("SELECT _FileName FROM _Config LIMIT 1")
 
             with self._session.engine.connect() as conn:
-                result = conn.execute(stmt).scalar()
-                return result.hex() if result else ""
+                result = conn.execute(stmt)
+                try:
+                    value = result.scalar()
+                except Exception:
+                    row = result.first()
+                    if row is None:
+                        return ""
+
+                    if hasattr(row, "_mapping"):
+                        mapping = row._mapping
+                        if "_FileName" in mapping:
+                            value = mapping["_FileName"]
+                        else:
+                            value = next(iter(mapping.values()), "")
+                    elif isinstance(row, (tuple, list)):
+                        value = row[0] if row else ""
+                    else:
+                        value = row
+
+                    return str(value or "")
+
+            return str(value or "")
         except Exception:
             return ""
 
     def check_metadata_actual(self) -> None:
-        """
-        Проверяет актуальность метаданных конфигурации.
-
-        Raises:
-            MetadataOutdatedError: если метаданные изменились
-        """
-        # Ленивый импорт внутри метода
-        from pydajet_metadata.exceptions import MetadataOutdatedError
-
-        current_root = self._get_root_guid()
-        # Если текущий GUID получен и он отличается от сохранённого — считаем метаданные устаревшими.
-        # Также считаем устаревшими, если сохранённый GUID пуст (например, не удалось определить при инициализации)
-        # и при этом текущий GUID присутствует и отличается от пустого.
-        if current_root and (not self._root_guid or current_root != self._root_guid):
+        """Проверяет, что метаданные в памяти актуальны."""
+        current_root_guid = self._get_root_guid()
+        if self._root_guid and current_root_guid and current_root_guid != self._root_guid:
             raise MetadataOutdatedError(
-                f"Metadata configuration has changed.\n"
-                f"  Old root GUID: {self._root_guid}\n"
-                f"  New root GUID: {current_root}\n"
-                f"  All cached metadata objects are outdated.\n"
-                f"  Please create a new Repository instance to reload metadata."
+                f"Metadata configuration has changed. Old root GUID: {self._root_guid}. New root GUID: {current_root_guid}"
             )
 
-    @property
-    def root_guid(self) -> str:
-        return self._root_guid
-
     def refresh_metadata(self) -> None:
-        """Обновляет кэш метаданных и пересобирает внутреннюю карту запросов."""
+        """Перечитывает метаданные и перестраивает набор Query-объектов."""
+        if self._cache_scope:
+            invalidate_cache_scope(self._cache_scope)
         self._root_guid = self._get_root_guid()
-        self._queries.clear()
         self._build()
 
 
 class TypeAccessor:
-    def __init__(self, repo: Repository, type_name: str):
-        self._repo = repo
+    """Удобный доступ к объектам метаданных по типу через атрибуты."""
+
+    def __init__(self, repository: Repository, type_name: str):
+        self._repository = repository
+        self._type_name = type_name
         self._type = type_name
 
-    def __getitem__(self, name: str) -> Query:
-        return self._repo.query(self._type, name)
-
-    def __getattr__(self, name: str) -> Query:
-        return self._repo.query(self._type, name)
-
     def list(self) -> list[str]:
-        return self._repo.objects(self._type)
+        return self._repository.objects(self._type_name)
+
+    def __getitem__(self, object_name: str) -> IQuery:
+        return cast(IQuery, self._repository.query(self._type_name, object_name))
+
+    def __getattr__(self, object_name: str) -> IQuery:
+        try:
+            return cast(IQuery, self._repository.query(self._type_name, object_name))
+        except KeyError as exc:
+            raise AttributeError(
+                f"Object '{object_name}' not found in '{self._type_name}'"
+            ) from exc

@@ -1,0 +1,3 @@
+"""Минимальный stub для pythonnet CLR (проект pydajet-metadata)."""
+
+def AddReference(assembly_name: str) -> None: ...
